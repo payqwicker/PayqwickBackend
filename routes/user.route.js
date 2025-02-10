@@ -7,10 +7,12 @@ const {
   changePassword,
   checkUserExists ,
   forgotPassword,
-   resendOtp,
+  resendOTP,
   verifyEmailOtp,
   deleteUserById,
+  logout,
 } = require('../controllers/user-controller');
+const authMiddleware = require('../authMiddleware/authMiddleware');
 
 const router = express.Router();
 
@@ -21,8 +23,9 @@ router.post('/validate-user', checkUserExists)
 router.get('/persist-user', persistUser);
 router.post('/forgot-password', forgotPassword);
 router.put('/change-password/:id/:token', changePassword);
-router.post("/resend-otp", resendOtp);
+router.post("/resend-otp", resendOTP);
 router.post('/verify-account', verifyEmailOtp);
 router.post('/delete-user', deleteUserById);
+router.post('/logout', authMiddleware, logout);
 
 module.exports = router;

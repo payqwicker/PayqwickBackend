@@ -8,11 +8,131 @@ const { generateRandomUniqueOTP } = require("../utils/functions");
 const Transaction = require("../models/Transaction");
 const TransactionHistory = require("../models/TransactionHistory");
 const SWallet = require("../models/sa-Wallet");
+const validator = require("validator");
+const disposableDomains = require('disposable-email-domains');
+const wildcardDomains = require('disposable-email-domains/wildcard');
+const { deleteSession, storeSession } = require("../services/redisService");
 
+const rateLimit = {};
 
+const isDisposableEmail = (email) => {
+  const domain = email.split('@')[1].toLowerCase();
+  
+  // Add common disposable domains
+  const additionalDisposableDomains = [
+    'tempmail.com',
+    'temp-mail.org',
+    'tempmailaddress.com',
+    'tmpmail.org',
+    'tmpmail.net',
+    'temp-mail.io',
+    'fake-mail.net',
+    'throwawaymail.com',
+    'trashmail.com',
+    'junkmail.com',
+    'spamtrap.org',
+    'mailinator.com',
+    'trash-mail.at',
+    'tempinbox.co.uk',
+    'tempmail.us',
+    'temp.emerald.com',
+    'tempinbox.com',
+    'tempmail.co.za',
+    'tempinbox.eu',
+    'tempmail.io',
+    'tempmail.ws',
+    'tempmail.cf',
+    'tempmail.ga',
+    'tempmail.gq',
+    'tempmail.tk',
+    'tempmail.ws',
+    'tempmail.cf',
+    'tempmail.ga',
+    'tempmail.gq',
+  ];
+  
+  return disposableDomains.includes(domain) || 
+         wildcardDomains.some(wildcard => domain.endsWith(wildcard)) ||
+         additionalDisposableDomains.includes(domain);
+};
 
+const signUp = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array(), ok: false });
+  }
 
+  let { email, full_name, phone, country, password } = req.body;
 
+  if (!validator.isEmail(email)) {
+    return res.status(400).json({ message: "Invalid email format.", ok: false });
+  }
+
+  if (isDisposableEmail(email)) {
+    return res.status(400).json({ message: "Disposable emails are not allowed.", ok: false });
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({ message: "Password must be at least 8 characters.", ok: false });
+  }
+
+  try {
+    const existingUser = await User.findOne({ email });
+    const checkPhone = await User.findOne({ phone });
+    
+    if (existingUser || checkPhone) {
+      return res.status(400).json({ message: "User already exists!", ok: false });
+    }
+    
+    const otp = generateRandomUniqueOTP(6); // Generate OTP
+    const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving it
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const newUser = new User({
+      email,
+      fullName: full_name,
+      country,
+      phone,
+      password: hashedPassword,
+      emailVerificationOTP: hashedOtp, // Save the hashed OTP
+      emailVerificationOTPExpires: new Date(Date.now() + 5 * 60 * 1000), // OTP expiration time
+    });
+    
+    const token = jwt.sign({ userId: newUser._id, email: newUser.email }, process.env.SECRET_KEY, { expiresIn: "1d" });
+    await newUser.save();
+    await new Wallet({ user: newUser._id }).save();
+    await new SWallet({ user: newUser._id }).save();
+    
+    // Send OTP via email
+    const transporter = nodemailer.createTransport({
+      service: "Gmail",
+      auth: { user: process.env.AUTH_EMAIL, pass: process.env.AUTH_PASS },
+    });
+    
+    const message = {
+      from: process.env.AUTH_SENDER,
+      to: email,
+      subject: "Email Verification OTP",
+      text: `Your OTP is: ${otp}`, // Plain OTP in email
+    };
+    
+    transporter.sendMail(message, (err, info) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to send OTP email", ok: false });
+      }
+    });
+    
+    return res.status(201).json({
+      message: "User created successfully. OTP sent.",
+      token,
+      ok: true,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal server error", ok: false });
+  }
+};
 
 
 const getAllUsers = async (req, res, next) => {
@@ -126,111 +246,6 @@ const deleteUserById = async (req, res, next) => {
   }
 };
 
-const signUp = async (req, res) => {
-  // Validate the request data using express-validator
-  const errors = validationResult(req);
-
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array(), ok: false });
-  }
-
-  let { email, full_name, phone, country, password } = req.body;
-
-  if (password.length < 8) {
-    return res.status(400).json({
-      message: "Password must not be less than 8 characters",
-      ok: false,
-    });
-  }
-
-  try {
-    // Check if the user already exists with the given email
-    const existingUser = await User.findOne({ email });
-    const checkPhone = await User.findOne({ phone });
-    if (existingUser || checkPhone) {
-      return res
-        .status(400)
-        .json({
-          message: "User with this email or Phone already exists!",
-          ok: false,
-        });
-    }
-    // const fullName = firstName + lastName;
-    // Create a new user
-    const otp = generateRandomUniqueOTP(6);
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({
-      email,
-      // firstName,
-      // lastName,
-      fullName: full_name,
-      country,
-      phone,
-      password: hashedPassword,
-      emailVerificationOTP: otp, // Store the OTP
-      emailVerificationOTPExpires: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes in milliseconds
-    });
-    // Generate a JWT token
-    const token = jwt.sign(
-      { userId: newUser._id, email: newUser.email },
-      process.env.SECRET_KEY,
-      {
-        expiresIn: "1day",
-      }
-    );
-
-    await newUser.save();
-    const newWallet = new Wallet({
-      user: newUser._id, // Reference the user's ID
-    });
-    const newSaWallet = new SWallet({
-      user: newUser._id, // Reference the user's
-    });
-    await newWallet.save();
-    await newSaWallet.save();
-    const transporter = nodemailer.createTransport({
-      service: "Gmail",
-      auth: {
-        user: process.env.AUTH_EMAIL, // Your Gmail email address
-        pass: process.env.AUTH_PASS, // Use an App Password generated from your Gmail account settings (more secure)
-      },
-    });
-
-    const message = {
-      from: process.env.AUTH_EMAIL,
-      to: email,
-      subject: "Email Verification OTP",
-      text: `Your OTP for email verification is: ${otp}`,
-    };
-
-    transporter.sendMail(message, (err, info) => {
-      if (err) {
-        res.status(500).json({ err });
-      }
-      if (info) {
-        res.status(201).json({ message: "You should receive an email" });
-      }
-    });
-
-    return res.status(201).json({
-      message: "User created successfully",
-      token,
-      ok: true,
-      user: {
-        email: newUser.email,
-        fullName: newUser.fullName,
-        id: newUser._id,
-        isVerified: newUser.isVerified,
-        phone: newUser.phone,
-        userType: newUser.userType,
-      },
-    });
-  } catch (error) {
-    console.error(error); // Log the error for debugging purposes
-    return res.status(500).json({ message: "Internal server error" });
-  }
-};
-
 const signIn = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -244,145 +259,76 @@ const signIn = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res
-        .status(401)
-        .json({ message: "User does not exist", ok: false });
+      return res.status(401).json({ message: "User does not exist", ok: false });
     }
 
     // Compare the provided password with the stored hashed password
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
-      return res
-        .status(401)
-        .json({ message: "Incorrect email or password", ok: false });
+      return res.status(401).json({ message: "Incorrect email or password", ok: false });
     }
 
     // Check if the account is verified
     if (!user.isVerified) {
       const otp = generateRandomUniqueOTP(6);
-      user.emailVerificationOTP = otp;
-      user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes in milliseconds
-      // console.log(user)
+      const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving
+      user.emailVerificationOTP = hashedOtp;
+      user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
       await user.save();
 
-      // transport the email
+      // Transport the email
       const transporter = nodemailer.createTransport({
         service: "Gmail",
         auth: {
-          user: process.env.AUTH_EMAIL, // Your Gmail email address
-          pass: process.env.AUTH_PASS, // Use an App Password generated from your Gmail account settings (more secure)
+          user: process.env.AUTH_EMAIL,
+          pass: process.env.AUTH_PASS,
         },
       });
 
       const mailOptions = {
-        from: process.env.AUTH_EMAIL,
+        from: process.env.AUTH_SENDER,
         to: email,
         subject: "Email Verification OTP",
         text: `Your OTP for email verification is: ${otp}`,
       };
 
-       try {
-       const info =   await transporter.sendMail(mailOptions);
-      //  console.log("Email", info)
-         return res.status(401).json({
-           message:
-             "Account is not verified. A new OTP has been sent to your email.",
-           ok: false,
-         });
-       } catch (emailError) {
-         console.error("Error sending email:", emailError);
-         return res.status(500).json({
-           message: "Error sending verification email. Please try again later.",
-           ok: false,
-         });
-       }
-       
+      try {
+        await transporter.sendMail(mailOptions);
+        return res.status(401).json({
+          message: "Account is not verified. A new OTP has been sent to your email.",
+          ok: false,
+        });
+      } catch (emailError) {
+        console.error("Error sending email:", emailError);
+        return res.status(500).json({
+          message: "Error sending verification email. Please try again later.",
+          ok: false,
+        });
+      }
     }
 
-    // Generate a JWT token
-    const token = jwt.sign(
+    // Generate JWT access & refresh tokens
+    const accessToken = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.SECRET_KEY,
-      {
-        expiresIn: "1day",
-      }
+      { expiresIn: "15m" } // Short-lived token
     );
 
-    // Additional logic for admin users
-    if (user.userType === "admin") {
-      const currentDate = new Date();
-      const firstDayOfCurrentMonth = new Date(
-        currentDate.getFullYear(),
-        currentDate.getMonth(),
-        1
-      );
-      const lastDayOfCurrentMonth = new Date(
-        currentDate.getFullYear(),
-        currentDate.getMonth() + 1,
-        0
-      );
+    const refreshToken = jwt.sign(
+      { userId: user._id, email: user.email },
+      process.env.REFRESH_SECRET,
+      { expiresIn: "7d" } // Long-lived token
+    );
 
-      const totalUsers = await User.countDocuments();
-      const totalTransactions = await Transaction.countDocuments();
-    //  const transactionHistories = await TransactionHistory.countDocuments();//adding history if needed
-     
-      const totalTransactionsThisMonth = await Transaction.countDocuments({
-        dateUTC: {
-          $gte: firstDayOfCurrentMonth,
-          $lte: lastDayOfCurrentMonth,
-        },
-      });
-      // const totalTransactionHistoryThisMonth = await TransactionHistory.countDocuments({
-      //   dateUTC: {
-      //     $gte : firstDayOfCurrentMonth,
-      //     $lte: lastDayOfCurrentMonth
-      //   },
-      // }
-      // )
-      const totalWallets = await Wallet.countDocuments();
-      const totalNewUsersThisWeek = await User.countDocuments({
-        createdAt: { $gte: new Date().setDate(new Date().getDate() - 7) },
-      });
-      const totalSuccessfulBillPayTransactions =
-        await Transaction.countDocuments({
-          status: "SUCCESSFUL",
-          transactionType: "BILL_PAY",
-        });
-      const totalSuccessfulAirtimeDataTransactions =
-        await Transaction.countDocuments({
-          status: "SUCCESSFUL",
-          transactionType: "SELL_AIRTIME_PRE_PAID",
-        });
+    // Store refresh token in Redis
+    await storeSession(user._id.toString(), refreshToken);
 
-      return res.status(200).json({
-        message: "Signin successful",
-        token,
-        ok: true,
-        user: {
-          email: user.email,
-          fullName: user.fullName,
-          id: user._id,
-          isVerified: user.isVerified,
-          phone: user.phone,
-          userType: user.userType,
-          stats: {
-            totalUsers,
-            totalTransactions,
-            totalTransactionsThisMonth,
-            totalWallets,
-            totalNewUsersThisWeek,
-            totalSuccessfulBillPayTransactions,
-            totalSuccessfulAirtimeDataTransactions,
-          },
-        },
-      });
-    }
-
-    // Return the response for non-admin users
+    // Return response
     return res.status(200).json({
       message: "Signin successful",
-      token,
+      accessToken,
+      refreshToken,
       ok: true,
       user: {
         email: user.email,
@@ -394,7 +340,8 @@ const signIn = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ message: "Internal server error" });
+    console.error("Sign-in error:", error);
+    return res.status(500).json({ message: "Internal server error", ok: false });
   }
 };
 
@@ -499,28 +446,37 @@ const verifyEmailOtp = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found", ok: false });
     }
-    if (
-      user.emailVerificationOTP === otp &&
-      user.emailVerificationOTPExpires > new Date()
-    ) {
-      // OTP is valid and within the expiration time
-      // Mark the email as verified
-      user.isVerified = true;
-      // user.isKYC = true;
-      user.emailVerificationOTP = null; // Clear the OTP
-      user.emailVerificationOTPExpires = null; // Clear the OTP expiration time
 
-      await user.save();
-
-      return res
-        .status(200)
-        .json({ message: "Email verified successfully", ok: true });
-    } else {
-      return res
-        .status(400)
-        .json({ message: "Invalid or expired OTP", ok: false });
+    // Check if OTP exists and has an expiration time
+    if (!user.emailVerificationOTP || !user.emailVerificationOTPExpires) {
+      return res.status(400).json({ message: "OTP not generated or expired", ok: false });
     }
+
+    // Check if OTP has expired
+    const currentTime = new Date();
+    if (user.emailVerificationOTPExpires < currentTime) {
+      return res.status(400).json({ message: "OTP has expired", ok: false });
+    }
+
+    // Compare the provided OTP with the hashed OTP stored in the database
+    const isOtpValid = await bcrypt.compare(otp, user.emailVerificationOTP);
+    if (!isOtpValid) {
+      return res.status(400).json({ message: "Invalid OTP", ok: false });
+    }
+
+    // OTP is valid and within the expiration time, proceed with email verification
+    user.isVerified = true; // Mark the email as verified
+    user.emailVerificationOTP = null; // Invalidate OTP (single-use)
+    user.emailVerificationOTPExpires = null; // Clear the expiration time
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Email verified successfully",
+      ok: true,
+    });
   } catch (error) {
+    console.error("Error verifying OTP:", error);
     return res.status(500).json({
       message: "Internal server error",
       ok: false,
@@ -528,7 +484,73 @@ const verifyEmailOtp = async (req, res) => {
   }
 };
 
-// forgot password.
+const resendOTP = async (req, res) => {
+  const { email } = req.body;
+  
+  if (!email || !validator.isEmail(email)) {
+    return res.status(400).json({ message: "Invalid email format.", ok: false });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: "User not found", ok: false });
+    }
+    if (user.isVerified) {
+      return res.status(400).json({ message: "Email already verified", ok: false });
+    }
+
+    const now = Date.now();
+    
+    // Ensure rateLimit tracking exists
+    if (!rateLimit[email]) {
+      rateLimit[email] = { attempts: [], lastRequest: 0 };
+    }
+
+    // Enforce cooldown period of 1 minute (60,000ms)
+    // const lastRequestTime = rateLimit[email].lastRequest;
+    // if (now - lastRequestTime < 60 * 1000) {
+    //   return res.status(429).json({ message: "Please wait 1 minute before requesting a new OTP.", ok: false });
+    // }
+
+    // Enforce hourly request limit (max 3 requests per hour)
+    rateLimit[email].attempts = rateLimit[email].attempts.filter((t) => now - t < 60 * 60 * 1000);
+    if (rateLimit[email].attempts.length >= 3) {
+      return res.status(429).json({ message: "Too many OTP requests. Try again later.", ok: false });
+    }
+
+    const newOTP = generateRandomUniqueOTP(6);
+    user.emailVerificationOTP = await bcrypt.hash(newOTP, 10); // Hash OTP for security
+    user.emailVerificationOTPExpires = new Date(now + 5 * 60 * 1000); // OTP expires in 5 minutes
+    await user.save();
+
+    rateLimit[email].attempts.push(now);
+    rateLimit[email].lastRequest = now; // Update last request time
+
+    const transporter = nodemailer.createTransport({
+      service: "Gmail",
+      auth: { user: process.env.AUTH_EMAIL, pass: process.env.AUTH_PASS },
+    });
+
+    const message = {
+      from: process.env.AUTH_SENDER,
+      to: email,
+      subject: "New OTP",
+      text: `Your new OTP is: ${newOTP}`,
+    };
+
+    transporter.sendMail(message, (err, info) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to send OTP email", ok: false });
+      }
+    });
+
+    return res.status(200).json({ message: "New OTP sent successfully", ok: true });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal server error", ok: false });
+  }
+};
 
 const forgotPassword = async (req, res) => {
   const errors = validationResult(req);
@@ -589,42 +611,6 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// const changePassword = async (req, res) => {
-//   // const { email, otp, newPassword } = req.body;
-//    const {id, token} = req.params;
-//   try {
-//     // Find the user by email
-//     const user = await User.findOne({ email });
-
-//     if (!user) {
-//       return res.status(404).json({ message: "User not found", ok: false });
-//     }
-
-//     if (
-//       user.passwordResetOtp === otp &&
-//       user.passwordResetOtpExpires > new Date()
-//     ) {
-//       user.password = await bcrypt.hash(newPassword, 10); // Hash the new password
-//       user.passwordResetOtp = null;
-//       user.passwordResetOtpExpires = null;
-//       await user.save();
-
-//       return res
-//         .status(200)
-//         .json({ message: "Password reset successfully", ok: true });
-//     } else {
-//       return res
-//         .status(400)
-//         .json({ message: "Invalid or expired OTP", ok: false });
-//     }
-//   } catch (error) {
-//     console.error(error);
-//     return res
-//       .status(500)
-//       .json({ message: "Internal server error", ok: false });
-//   }
-// };
-
 const changePassword = async (req, res) => {
   const {  newPassword } = req.body;
   const { id, token } = req.params;
@@ -665,74 +651,35 @@ const changePassword = async (req, res) => {
   }
 };
 
-
-const resendOtp = async (req, res) => {
+const logout = async (req, res) => {
   try {
-    // Validate input
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array(), ok: false });
+    // Ensure userId exists (from authentication middleware)
+    if (!req.user || !req.user.userId) {
+      return res.status(400).json({ message: "User not authenticated", ok: false });
     }
-
-    const { email } = req.body;
-
-    // Find user by email
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res
-        .status(404)
-        .json({ message: "Account does not exist", ok: false });
-    }
-
-    // Check if user is already verified
-    if (user.isVerified) {
-      return res
-        .status(400)
-        .json({ message: "User is already verified", ok: false });
-    }
-
-    // Ensure OTP has expired before generating a new one
-    const currentTime = Date.now();
-    if (user.emailVerificationOTPExpires > currentTime) {
-      return res.status(400).json({
-        message: "Please wait before requesting a new OTP",
-        ok: false,
-      });
-    }
-
-    // Generate a new OTP and set expiration (5 minutes)
-    const otp = generateRandomUniqueOTP(6);
-    user.emailVerificationOTP = otp;
-    user.emailVerificationOTPExpires = currentTime + 5 * 60 * 1000;
-    await user.save();
-
     
-    // transport the email
-    const transporter = nodemailer.createTransport({
-      service: "Gmail",
-      auth: {
-        user: process.env.AUTH_EMAIL, // Your Gmail email address
-        pass: process.env.AUTH_PASS, // Use an App Password generated from your Gmail account settings (more secure)
-      },
-    });
+    const userId = req.user.userId; // Extract user ID from the request
 
-    const mailOptions = {
-      from: process.env.AUTH_EMAIL,
-      to: email,
-      subject: "Click the link to reset your password",
-      text: `Your verification OTP is: ${otp}. It expires in 5 minutes.`,
-    };
+    // 1. Check if the session exists before attempting to delete it (optional but helpful)
+    const sessionExists = await checkSessionExists(userId); // Assuming you have a function to check session existence
+    if (!sessionExists) {
+      return res.status(400).json({ message: "Session already expired or doesn't exist", ok: false });
+    }
 
-    transporter.sendMail(mailOptions);
+    // 2. Invalidate refresh token(s)
+    const refreshTokenInvalidated = await invalidateRefreshTokens(userId);
+    if (!refreshTokenInvalidated) {
+      return res.status(500).json({ message: "Failed to invalidate refresh token(s)", ok: false });
+    }
 
-    return res
-      .status(200)
-      .json({ message: "OTP sent to your email", ok: true });
+    // 3. Remove the session from Redis or your session store
+    await deleteSession(userId);
+
+    // 4. Return success message
+    return res.status(200).json({ message: "Logout successful", ok: true });
   } catch (error) {
-    console.error("Error in resendOtp:", error);
-    return res
-      .status(500)
-      .json({ message: "Internal server error", ok: false });
+    console.error("Logout Error:", error);
+    return res.status(500).json({ message: "Internal server error", ok: false });
   }
 };
 
@@ -741,10 +688,11 @@ module.exports = {
   signIn,
   signUp,
   verifyEmailOtp,
-  resendOtp,
   changePassword,
   forgotPassword,
   checkUserExists,
   persistUser,
   deleteUserById,
+  resendOTP,
+  logout
 };

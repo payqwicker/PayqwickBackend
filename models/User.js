@@ -1,14 +1,7 @@
 const mongoose = require('mongoose');
+const cron = require('node-cron');
 
 const userSchema = new mongoose.Schema({
-  // firstName: {
-  //   type: String,
-  //   required: true,
-  // },
-  // lastName: {
-  //   type: String,
-  //   required: true,
-  // },
   fullName: {
     type: String,
     required: true,
@@ -61,6 +54,8 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  otpRequestCount: { type: Number, default: 0 },  // Tracks OTP request count per hour
+  otpRequestWindow: { type: Date },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -70,6 +65,8 @@ const userSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+
 
 const User = mongoose.model('User', userSchema);
 
