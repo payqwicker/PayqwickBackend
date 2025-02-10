@@ -1,6 +1,6 @@
 const Redis = require("ioredis");
 
-const redisClient = new Redis(process.env.REDIS_URL || "redis://default:dT03Dm64w4zGh5Mb7niFiz1kklZfeYQC@redis-12900.c99.us-east-1-4.ec2.redns.redis-cloud.com:12900");
+const redisClient = new Redis(process.env.REDIS_URL);
 
 // Store session (refresh token) in Redis
 const storeSession = async (userId, token) => {
