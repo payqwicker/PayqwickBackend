@@ -116,6 +116,10 @@ cron.schedule("0 0 * * *", async () => {
   }
 });
 
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "Server is running smoothly!" });
+});
+
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });

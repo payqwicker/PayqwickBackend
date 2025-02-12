@@ -55,5 +55,5 @@ const reviewDocument = async (req, res) => {
 
 
 
-module.exports = {uploadDocument, reviewDocument, faceMatch};
+module.exports = {uploadDocument, reviewDocument};
   
