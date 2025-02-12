@@ -1,9 +1,12 @@
 const multer = require("multer");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("../config/cloudinary")
 
-const storage = multer.diskStorage({
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.originalname + "-" + uniqueSuffix);
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "user_documents", // Folder in Cloudinary
+    allowed_formats: ["jpg", "png", "jpeg", "pdf"],
   },
 });
 

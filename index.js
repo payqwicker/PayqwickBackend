@@ -23,6 +23,7 @@ const secretRouter = require("./routes/secret-route");
 const cryptoRouter = require("./routes/crypto-route");
 const prepaidElectricityRouter = require("./routes/prepaid-electricty-route");
 const southAfricaRouter = require("./routes/south-africa-route");
+const uploadRouter = require("./routes/upload-route");
 
 const cors = require("cors");
 const cloudinary = require("cloudinary").v2;
@@ -35,6 +36,7 @@ const allowedOrigins = [
   "http://192.168.0.183:8081",
   "http://0.0.0.0:8081",
   "https://payqwicker.com",
+  "https://payqwickerweb.vercel.app",
 ];
 
 const corsOptions = {
@@ -76,6 +78,7 @@ app.use("/api/kyc", kycRouter);
 app.use("/api/secret", secretRouter);
 app.use("/api/verify", verificationRouter);
 app.use("/api/south-africa", southAfricaRouter);
+app.use("/api/upload", uploadRouter)
 
 
 const port = process.env.PORT || 4000;
