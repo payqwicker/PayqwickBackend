@@ -54,6 +54,10 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  verification_method: {
+    type: String,
+    enum: ['NIN', 'Passport', 'Driver’s License', 'Voter’s Card'],
+  },
   otpRequestCount: { type: Number, default: 0 },  // Tracks OTP request count per hour
   otpRequestWindow: { type: Date },
   createdAt: {
@@ -65,6 +69,8 @@ const userSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
+
+
 
 
 

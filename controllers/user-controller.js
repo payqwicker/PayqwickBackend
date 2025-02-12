@@ -246,6 +246,204 @@ const deleteUserById = async (req, res, next) => {
   }
 };
 
+// const signIn = async (req, res) => {
+//   const errors = validationResult(req);
+//   if (!errors.isEmpty()) {
+//     return res.status(400).json({ errors: errors.array(), ok: false });
+//   }
+
+//   let { email, password } = req.body;
+
+//   try {
+//     // Find the user by email
+//     const user = await User.findOne({ email });
+
+//     if (!user) {
+//       return res.status(401).json({ message: "User does not exist", ok: false });
+//     }
+
+//     // Compare the provided password with the stored hashed password
+//     const passwordMatch = await bcrypt.compare(password, user.password);
+
+//     if (!passwordMatch) {
+//       return res.status(401).json({ message: "Incorrect email or password", ok: false });
+//     }
+
+//     // Check if the account is verified
+//     if (!user.isVerified) {
+//       const otp = generateRandomUniqueOTP(6);
+//       const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving
+//       user.emailVerificationOTP = hashedOtp;
+//       user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+//       await user.save();
+
+//       // Transport the email
+//       const transporter = nodemailer.createTransport({
+//         service: "Gmail",
+//         auth: {
+//           user: process.env.AUTH_EMAIL,
+//           pass: process.env.AUTH_PASS,
+//         },
+//       });
+
+//       const mailOptions = {
+//         from: process.env.AUTH_SENDER,
+//         to: email,
+//         subject: "Email Verification OTP",
+//         text: `Your OTP for email verification is: ${otp}`,
+//       };
+
+//       try {
+//         await transporter.sendMail(mailOptions);
+//         return res.status(401).json({
+//           message: "Account is not verified. A new OTP has been sent to your email.",
+//           ok: false,
+//         });
+//       } catch (emailError) {
+//         console.error("Error sending email:", emailError);
+//         return res.status(500).json({
+//           message: "Error sending verification email. Please try again later.",
+//           ok: false,
+//         });
+//       }
+//     }
+
+//     // Generate JWT access & refresh tokens
+//     const accessToken = jwt.sign(
+//       { userId: user._id, email: user.email },
+//       process.env.SECRET_KEY,
+//       { expiresIn: "15m" } // Short-lived token
+//     );
+
+//     const refreshToken = jwt.sign(
+//       { userId: user._id, email: user.email },
+//       process.env.REFRESH_SECRET,
+//       { expiresIn: "7d" } // Long-lived token
+//     );
+
+//     // Store refresh token in Redis
+//     await storeSession(user._id.toString(), refreshToken);
+
+//     // Return response
+//     return res.status(200).json({
+//       message: "Signin successful",
+//       accessToken,
+//       refreshToken,
+//       ok: true,
+//       user: {
+//         email: user.email,
+//         fullName: user.fullName,
+//         id: user._id,
+//         isVerified: user.isVerified,
+//         phone: user.phone,
+//         userType: user.userType,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Sign-in error:", error);
+//     return res.status(500).json({ message: "Internal server error", ok: false });
+//   }
+// };
+
+// const signIn = async (req, res) => {
+//   const errors = validationResult(req);
+//   if (!errors.isEmpty()) {
+//     return res.status(400).json({ errors: errors.array(), ok: false });
+//   }
+
+//   let { email, password } = req.body;
+
+//   try {
+//     // Find the user by email
+//     const user = await User.findOne({ email });
+
+//     if (!user) {
+//       return res.status(401).json({ message: "User does not exist", ok: false });
+//     }
+
+//     // Compare the provided password with the stored hashed password
+//     const passwordMatch = await bcrypt.compare(password, user.password);
+
+//     if (!passwordMatch) {
+//       return res.status(401).json({ message: "Incorrect email or password", ok: false });
+//     }
+
+//     // Check if the account is verified
+//     if (!user.isVerified) {
+//       const otp = generateRandomUniqueOTP(6);
+//       const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving
+//       user.emailVerificationOTP = hashedOtp;
+//       user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+//       await user.save();
+
+//       // Transport the email
+//       const transporter = nodemailer.createTransport({
+//         service: "Gmail",
+//         auth: {
+//           user: process.env.AUTH_EMAIL,
+//           pass: process.env.AUTH_PASS,
+//         },
+//       });
+
+//       const mailOptions = {
+//         from: process.env.AUTH_SENDER,
+//         to: email,
+//         subject: "Email Verification OTP",
+//         text: `Your OTP for email verification is: ${otp}`,
+//       };
+
+//       try {
+//         await transporter.sendMail(mailOptions);
+//         return res.status(401).json({
+//           message: "Account is not verified. A new OTP has been sent to your email.",
+//           ok: false,
+//         });
+//       } catch (emailError) {
+//         console.error("Error sending email:", emailError);
+//         return res.status(500).json({
+//           message: "Error sending verification email. Please try again later.",
+//           ok: false,
+//         });
+//       }
+//     }
+
+//     // Generate JWT access & refresh tokens
+//     const accessToken = jwt.sign(
+//       { userId: user._id, email: user.email },
+//       process.env.SECRET_KEY,
+//       { expiresIn: "15m" } // Short-lived token
+//     );
+
+//     const refreshToken = jwt.sign(
+//       { userId: user._id, email: user.email },
+//       process.env.REFRESH_SECRET,
+//       { expiresIn: "7d" } // Long-lived token
+//     );
+
+//     // Store refresh token in Redis
+//     await storeSession(user._id.toString(), accessToken);
+
+//     // Return response with Bearer token format
+//     return res.status(200).json({
+//       message: "Signin successful",
+//       accessToken: `Bearer ${accessToken}`,  // Bearer token format
+//       refreshToken,
+//       ok: true,
+//       user: {
+//         email: user.email,
+//         fullName: user.fullName,
+//         id: user._id,
+//         isVerified: user.isVerified,
+//         phone: user.phone,
+//         userType: user.userType,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Sign-in error:", error);
+//     return res.status(500).json({ message: "Internal server error", ok: false });
+//   }
+// };
+
 const signIn = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -255,29 +453,32 @@ const signIn = async (req, res) => {
   let { email, password } = req.body;
 
   try {
-    // Find the user by email
     const user = await User.findOne({ email });
 
     if (!user) {
       return res.status(401).json({ message: "User does not exist", ok: false });
     }
 
-    // Compare the provided password with the stored hashed password
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
+      user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+
+      if (user.failedLoginAttempts >= 5) {
+        return res.status(403).json({ message: "Too many failed attempts. Try again later.", ok: false });
+      }
+
+      await user.save();
       return res.status(401).json({ message: "Incorrect email or password", ok: false });
     }
 
-    // Check if the account is verified
     if (!user.isVerified) {
       const otp = generateRandomUniqueOTP(6);
-      const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving
+      const hashedOtp = await bcrypt.hash(otp, 10);
       user.emailVerificationOTP = hashedOtp;
-      user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+      user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000;
       await user.save();
 
-      // Transport the email
       const transporter = nodemailer.createTransport({
         service: "Gmail",
         auth: {
@@ -308,27 +509,34 @@ const signIn = async (req, res) => {
       }
     }
 
-    // Generate JWT access & refresh tokens
+    user.lastActive = Date.now();
+    user.failedLoginAttempts = 0; // Reset failed attempts
+    await user.save();
+
     const accessToken = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.SECRET_KEY,
-      { expiresIn: "15m" } // Short-lived token
+      { expiresIn: "15m" }
     );
 
     const refreshToken = jwt.sign(
       { userId: user._id, email: user.email },
       process.env.REFRESH_SECRET,
-      { expiresIn: "7d" } // Long-lived token
+      { expiresIn: "7d" }
     );
 
-    // Store refresh token in Redis
-    await storeSession(user._id.toString(), refreshToken);
+    await storeSession(user._id.toString(), accessToken);
 
-    // Return response
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     return res.status(200).json({
       message: "Signin successful",
-      accessToken,
-      refreshToken,
+      accessToken: `Bearer ${accessToken}`,
       ok: true,
       user: {
         email: user.email,
@@ -344,6 +552,7 @@ const signIn = async (req, res) => {
     return res.status(500).json({ message: "Internal server error", ok: false });
   }
 };
+
 
 const persistUser = async (req, res) => {
   const authHeader = req.header("Authorization");
@@ -653,35 +862,14 @@ const changePassword = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    // Ensure userId exists (from authentication middleware)
-    if (!req.user || !req.user.userId) {
-      return res.status(400).json({ message: "User not authenticated", ok: false });
-    }
-    
-    const userId = req.user.userId; // Extract user ID from the request
-
-    // 1. Check if the session exists before attempting to delete it (optional but helpful)
-    const sessionExists = await checkSessionExists(userId); // Assuming you have a function to check session existence
-    if (!sessionExists) {
-      return res.status(400).json({ message: "Session already expired or doesn't exist", ok: false });
-    }
-
-    // 2. Invalidate refresh token(s)
-    const refreshTokenInvalidated = await invalidateRefreshTokens(userId);
-    if (!refreshTokenInvalidated) {
-      return res.status(500).json({ message: "Failed to invalidate refresh token(s)", ok: false });
-    }
-
-    // 3. Remove the session from Redis or your session store
-    await deleteSession(userId);
-
-    // 4. Return success message
+    await deleteSession(req.user.userId);
     return res.status(200).json({ message: "Logout successful", ok: true });
   } catch (error) {
-    console.error("Logout Error:", error);
+    console.error("Logout error:", error);
     return res.status(500).json({ message: "Internal server error", ok: false });
   }
 };
+
 
 module.exports = {
   getAllUsers,
