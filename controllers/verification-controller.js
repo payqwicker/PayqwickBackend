@@ -1,5 +1,11 @@
 require("dotenv").config();
 const User = require("../models/User");
+const axios = require("axios");
+require('dotenv').config();
+
+const SANDBOX = `https://sandbox.dojah.io`;
+const DOJAH = `https://api.dojah.io`; // Production URL
+
 
 
 // Controller function to select a verification method (Authenticated)
@@ -32,43 +38,7 @@ const selectVerificationMethod = async (req, res) => {
   }
 };
 
-
-// Controller function to verify a NIN (Authenticated)
-const verifyNIN = async (req, res) => {
-  try {
-    const { nin } = req.body;
-    if (!nin) {
-      return res.status(400).json({ error: "NIN is required" });
-    }
-
-    const response = await fetch("https://api.dojah.io/api/v1/kyc/nin", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "AppId": process.env.DOJAH_APP_ID,
-        "Authorization": `Bearer ${process.env.DOJAH_SECRET_KEY}`,
-      },
-      body: JSON.stringify({ id: nin }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: "Verification failed",
-        details: data,
-      });
-    }
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({
-      error: "Verification failed",
-      details: error.message,
-    });
-  }
-};
-
+// Controller function to perform face match verification (Authenticated)
 const faceMatch = async (req, res) => {
   try {
     const { nin } = req.body;
@@ -108,6 +78,46 @@ const faceMatch = async (req, res) => {
     });
   }
 };
+
+// Controller function to verify user's NIN (Authenticated)
+const verifyNIN = async (req, res) => {
+  try {
+    const { nin } = req.query; // FIXED: Extract NIN from query parameters
+    console.log(req.query);
+
+    if (!nin) {
+      return res.status(400).json({ message: "NIN is required" });
+    }
+
+    const response = await axios.get(`${SANDBOX}/api/v1/kyc/nin`, {
+      headers: {
+        'AppId': process.env.DOJAH_APP_ID,
+        'Authorization': process.env.DOJAH_SECRET_KEY,
+        'Content-Type': 'application/json'
+      },
+      params: { nin } // Ensure NIN is sent as a query parameter
+    });
+
+    if (response.data && response.data.entity) {
+      res.json({
+        success: true,
+        data: response.data.entity
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: "NIN not found"
+      });
+    }
+  } catch (error) {
+    console.error('Error verifying NIN:', error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error"
+    });
+  }
+};
+
 
 
 module.exports = {

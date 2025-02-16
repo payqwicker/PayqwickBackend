@@ -2,18 +2,18 @@
 const axios = require("axios");
 
 const uploadDocument = async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded" });
-      }
-  
-      res.json({
-        message: "Upload successful",
-        fileUrl: req.file.path, // Cloudinary URL
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Upload failed", details: error.message });
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
+
+    res.json({
+      message: "Upload successful",
+      fileUrl: req.file.path, // Cloudinary URL
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Upload failed", details: error.message });
+  }
 };
 
 const reviewDocument = async (req, res) => {
@@ -47,12 +47,6 @@ const reviewDocument = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-
 
 
 module.exports = {uploadDocument, reviewDocument};

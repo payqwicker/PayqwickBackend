@@ -76,7 +76,7 @@ app.use("/api/airtime-exchange-request", airtimeRequestRouter);
 app.use("/api/crypto", cryptoRouter);
 app.use("/api/kyc", kycRouter);
 app.use("/api/secret", secretRouter);
-app.use("/api/verify", verificationRouter);
+app.use("/api", verificationRouter);
 app.use("/api/south-africa", southAfricaRouter);
 app.use("/api/upload", uploadRouter)
 
@@ -123,3 +123,5 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
+
+
