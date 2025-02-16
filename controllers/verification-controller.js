@@ -118,10 +118,54 @@ const verifyNIN = async (req, res) => {
   }
 };
 
+const BVN_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/bvn/advance";
+const BVN_LIVE_URL = "https://api.dojah.io/api/v1/kyc/bvn/advance"; // Use this in production
+
+const verifyBVN = async (req, res) => {
+  try {
+    const { bvn } = req.query; // Get BVN from query params
+
+    if (!bvn) {
+      return res.status(400).json({ message: "BVN is required" });
+    }
+
+    const response = await axios.get(BVN_SANDBOX_URL, {
+      headers: {
+        "AppId": process.env.DOJAH_APP_ID,
+        "Authorization": process.env.DOJAH_SECRET_KEY,
+        "Content-Type": "application/json",
+      },
+      params: { bvn },
+    });
+
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        data: response.data.entity, // BVN details
+      });
+    } else {
+      return res.status(404).json({
+        success: false,
+        message: "BVN not found",
+      });
+    }
+  } catch (error) {
+    console.error("Error verifying BVN:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
 
 
 module.exports = {
   selectVerificationMethod,
   verifyNIN,
-  faceMatch
+  faceMatch,
+  verifyBVN
 };

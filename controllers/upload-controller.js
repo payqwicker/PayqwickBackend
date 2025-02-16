@@ -1,5 +1,7 @@
 
 const axios = require("axios");
+const SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/document";
+const LIVE_URL = "https://api.dojah.io/api/v1/kyc/document"; // Use this in production
 
 const uploadDocument = async (req, res) => {
   try {
@@ -16,38 +18,46 @@ const uploadDocument = async (req, res) => {
   }
 };
 
-const reviewDocument = async (req, res) => {
+const verifyDocument = async (req, res) => {
   try {
-    const { fileUrl, documentType } = req.body;
+    const { document_type, image } = req.body;
 
-    if (!fileUrl || !documentType) {
-      return res.status(400).json({ error: "File URL and document type are required" });
+    if (!document_type || !image) {
+      return res.status(400).json({ message: "Document type and image are required" });
     }
 
-    const response = await axios.post(
-      "https://api.dojah.io/api/v1/kyc/document_review",
-      { image: fileUrl, type: documentType }, 
+    const response = await axios.post(SANDBOX_URL, 
+      { document_type, image }, 
       {
         headers: {
-          "Content-Type": "application/json",
           "AppId": process.env.DOJAH_APP_ID,
-          "Authorization": `Bearer ${process.env.DOJAH_SECRET_KEY}`,
+          "Authorization": process.env.DOJAH_SECRET_KEY,
+          "Content-Type": "application/json",
         },
       }
     );
 
-    res.json({
-      message: "Document sent for review",
-      reviewResult: response.data,
-    });
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        data: response.data.entity, // Extracted document details
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Document analysis failed",
+      });
+    }
   } catch (error) {
+    console.error("Error verifying document:", error.message);
     res.status(500).json({
-      error: "Review failed",
-      details: error.response?.data || error.message,
+      success: false,
+      message: "Internal server error",
+      error: error.message,
     });
   }
 };
 
 
-module.exports = {uploadDocument, reviewDocument};
+module.exports = {uploadDocument, verifyDocument};
   
