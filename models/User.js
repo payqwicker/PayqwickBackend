@@ -56,7 +56,11 @@ const userSchema = new mongoose.Schema({
   },
   verification_method: {
     type: String,
-    enum: ['NIN', 'Passport', 'Driver’s License', 'Voter’s Card'],
+    enum: ['NIN', 'Passport', 'Driver’s License', 'Voter’s Card', 'BVN'],
+  },
+  verification_data: {
+    type: Map, // Allows dynamic key-value storage
+    of: String,
   },
   otpRequestCount: { type: Number, default: 0 },  // Tracks OTP request count per hour
   otpRequestWindow: { type: Date },

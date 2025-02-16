@@ -9,6 +9,6 @@ const upload = require('../config/multer');
 router.post("/verify-select",authMiddleware, selectVerificationMethod);
 router.post("/verify/face-match", authMiddleware, upload.single("file"), faceMatch);
 router.get('/verify-nin', verifyNIN);
-router.get("/verify-bvn", authMiddleware, verifyBVN);
+router.get("/verify-bvn", verifyBVN);
 
 module.exports = router;

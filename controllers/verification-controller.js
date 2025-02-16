@@ -3,8 +3,7 @@ const User = require("../models/User");
 const axios = require("axios");
 require('dotenv').config();
 
-const SANDBOX = `https://sandbox.dojah.io`;
-const DOJAH = `https://api.dojah.io`; // Production URL
+
 
 
 
@@ -79,7 +78,8 @@ const faceMatch = async (req, res) => {
   }
 };
 
-// Controller function to verify user's NIN (Authenticated)
+const SANDBOX = `https://sandbox.dojah.io`;
+const DOJAH = `https://api.dojah.io`; // Production URL
 const verifyNIN = async (req, res) => {
   try {
     const { nin } = req.query; // FIXED: Extract NIN from query parameters
@@ -120,7 +120,6 @@ const verifyNIN = async (req, res) => {
 
 const BVN_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/bvn/advance";
 const BVN_LIVE_URL = "https://api.dojah.io/api/v1/kyc/bvn/advance"; // Use this in production
-
 const verifyBVN = async (req, res) => {
   try {
     const { bvn } = req.query; // Get BVN from query params
@@ -139,14 +138,17 @@ const verifyBVN = async (req, res) => {
     });
 
     if (response.data && response.data.entity) {
+      // BVN is valid
       return res.json({
         success: true,
         data: response.data.entity, // BVN details
       });
     } else {
-      return res.status(404).json({
+      // BVN verification failed, request a supporting document
+      return res.status(400).json({
         success: false,
-        message: "BVN not found",
+        message: "BVN verification failed. Please upload a supporting document such as a bank statement.",
+        required_document: "Bank Statement",
       });
     }
   } catch (error) {
