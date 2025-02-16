@@ -37,47 +37,6 @@ const selectVerificationMethod = async (req, res) => {
   }
 };
 
-// Controller function to perform face match verification (Authenticated)
-const faceMatch = async (req, res) => {
-  try {
-    const { nin } = req.body;
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-    if (!nin) {
-      return res.status(400).json({ error: "NIN is required for verification" });
-    }
-
-    // Get the uploaded file URL from Cloudinary
-    const imageUrl = req.file.path;
-
-    // Send the image & NIN to Dojah for face match
-    const response = await axios.post(
-      "https://api.dojah.io/api/v1/kyc/face_match",
-      { image: imageUrl, id: nin },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "AppId": process.env.DOJAH_APP_ID,
-          "Authorization": `Bearer ${process.env.DOJAH_SECRET_KEY}`,
-        },
-      }
-    );
-
-    res.json({
-      message: "Face match completed",
-      fileUrl: imageUrl,
-      verificationResult: response.data,
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: "Face match failed",
-      details: error.response?.data || error.message,
-    });
-  }
-};
-
 const SANDBOX = `https://sandbox.dojah.io`;
 const DOJAH = `https://api.dojah.io`; // Production URL
 const verifyNIN = async (req, res) => {
@@ -162,12 +121,169 @@ const verifyBVN = async (req, res) => {
 };
 
 
+const LIVENESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/liveness-check";
+const LIVENESS_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/liveness-check"; // Use this in production
+const performLivenessCheck = async (req, res) => {
+  try {
+    const { input_type, image } = req.body;
+
+    if (!input_type || !image) {
+      return res.status(400).json({ message: "Both input_type and image are required." });
+    }
+
+    const response = await axios.post(
+      LIVENESS_SANDBOX_URL, 
+      { input_type, image }, 
+      {
+        headers: {
+          "AppId": process.env.DOJAH_APP_ID,
+          "Authorization": process.env.DOJAH_SECRET_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        data: response.data.entity,  // Liveness check details
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Liveness check failed. Please try again.",
+      });
+    }
+  } catch (error) {
+    console.error("Error performing liveness check:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+const SELFIE_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/selfie-id";
+const SELFIE_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/selfie-id"; // Use this in production
+const verifySelfieWithID = async (req, res) => {
+  try {
+    const { id_type, id_number, input_type, selfie_image, id_image } = req.body;
+
+    // ✅ Validate required fields
+    if (!id_type || !id_number || !input_type || !selfie_image || !id_image) {
+      return res.status(400).json({
+        success: false,
+        message: "id_type, id_number, input_type, selfie_image, and id_image are required.",
+      });
+    }
+
+    // ✅ Send request to Dojah API
+    const response = await axios.post(
+      SELFIE_SANDBOX_URL, 
+      { id_type, id_number, input_type, selfie: selfie_image, id: id_image },
+      {
+        headers: {
+          "AppId": process.env.DOJAH_APP_ID,
+          "Authorization": process.env.DOJAH_SECRET_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // ✅ Handle API response
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        data: response.data.entity,  // Verification details
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Selfie verification failed. Please try again.",
+      });
+    }
+  } catch (error) {
+    console.error("Error verifying selfie with ID:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+const ADDRESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/address";
+const ADDRESS_LIVE_URL = "https://api.dojah.io/api/v1/kyc/address"; // Use this in production
+const verifyAddress = async (req, res) => {
+  try {
+    const { first_name, last_name, email, phone, country, state, lga, city, street, house_number } = req.body;
+
+    // ✅ Validate required fields
+    if (!first_name || !last_name || !email || !phone || !country || !state || !city || !street || !house_number) {
+      return res.status(400).json({
+        success: false,
+        message: "All required fields (first_name, last_name, email, phone, country, state, city, street, house_number) must be provided.",
+      });
+    }
+
+    // ✅ Send request to Dojah API
+    const response = await axios.post(
+      ADDRESS_SANDBOX_URL,
+      {
+        first_name,
+        last_name,
+        email,
+        phone,
+        country,
+        state,
+        lga,
+        city,
+        street,
+        house_number,
+      },
+      {
+        headers: {
+          "AppId": process.env.DOJAH_APP_ID,
+          "Authorization": process.env.DOJAH_SECRET_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // ✅ Handle API response
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        data: response.data.entity, // Address verification details
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Address verification failed. Please check the provided details.",
+      });
+    }
+  } catch (error) {
+    console.error("Error verifying address:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
 
 
 
 module.exports = {
   selectVerificationMethod,
   verifyNIN,
-  faceMatch,
-  verifyBVN
+  verifyBVN,
+  performLivenessCheck,
+  verifySelfieWithID,
+  verifyAddress
 };
