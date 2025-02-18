@@ -340,30 +340,53 @@ const callBackResponse = async (req, res) => {
 //   }
 // };
 
-const getRecentTransaction = async (req, res) => {
+
+const getTransactions = async (req, res) => {
   try {
-    const userId = req.user.id; // Extract user ID from the authenticated request
+    const userId = req.user.id;
 
-    const recentTransaction = await Transaction.findOne({ user_id: userId })
-      .sort({ dateUTC: -1 }) // Sort in descending order (most recent first)
-      .limit(1); // Fetch only the latest transaction
+    // Extract query parameters for filtering and pagination
+    const { status, transactionType, page = 1, limit = 10 } = req.query;
+    
+    const filter = { user_id: userId };
+    
+    if (status) {
+      filter.status = status; // Filter by transaction status
+    }
+    
+    if (transactionType) {
+      filter.transactionType = transactionType; // Filter by transaction type
+    }
 
-    if (!recentTransaction) {
+    const transactions = await Transaction.find(filter)
+      .sort({ dateUTC: -1 }) // Sort by most recent transactions
+      .skip((page - 1) * limit) // Pagination: skip past records
+      .limit(parseInt(limit)); // Limit number of records returned
+
+    if (transactions.length === 0) {
       return res.status(404).json({ message: 'No transactions found' });
     }
 
-    res.status(200).json(recentTransaction);
+    const totalTransactions = await Transaction.countDocuments(filter);
+
+    res.status(200).json({
+      transactions,
+      total: totalTransactions,
+      page: parseInt(page),
+      totalPages: Math.ceil(totalTransactions / limit),
+    });
   } catch (error) {
-    console.error('Error fetching recent transaction:', error);
+    console.error('Error fetching transactions:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
 
+
 module.exports = {
   getTransactionsByUserId,
   getAllTransactions,
-  getRecentTransaction,
+  getTransactions,
   createTransaction,
   verifyTransaction,
   callBackResponse
