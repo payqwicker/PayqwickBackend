@@ -2,6 +2,7 @@ require("dotenv").config();
 const User = require("../models/User");
 const axios = require("axios");
 require('dotenv').config();
+const fs = require('fs'); // Make sure to import fs module
 
 
 
@@ -121,48 +122,48 @@ const verifyBVN = async (req, res) => {
 };
 
 
-const LIVENESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/liveness-check";
-const LIVENESS_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/liveness-check"; // Use this in production
-const performLivenessCheck = async (req, res) => {
-  try {
-    const { input_type, image } = req.body;
+// const LIVENESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/liveness-check";
+// const LIVENESS_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/liveness-check"; // Use this in production
+// const performLivenessCheck = async (req, res) => {
+//   try {
+//     const { input_type, image } = req.body;
 
-    if (!input_type || !image) {
-      return res.status(400).json({ message: "Both input_type and image are required." });
-    }
+//     if (!input_type || !image) {
+//       return res.status(400).json({ message: "Both input_type and image are required." });
+//     }
 
-    const response = await axios.post(
-      LIVENESS_SANDBOX_URL, 
-      { input_type, image }, 
-      {
-        headers: {
-          "AppId": process.env.DOJAH_APP_ID,
-          "Authorization": process.env.DOJAH_SECRET_KEY,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+//     const response = await axios.post(
+//       LIVENESS_SANDBOX_URL, 
+//       { input_type, image }, 
+//       {
+//         headers: {
+//           "AppId": process.env.DOJAH_APP_ID,
+//           "Authorization": process.env.DOJAH_SECRET_KEY,
+//           "Content-Type": "application/json",
+//         },
+//       }
+//     );
 
-    if (response.data && response.data.entity) {
-      return res.json({
-        success: true,
-        data: response.data.entity,  // Liveness check details
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Liveness check failed. Please try again.",
-      });
-    }
-  } catch (error) {
-    console.error("Error performing liveness check:", error.message);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
-  }
-};
+//     if (response.data && response.data.entity) {
+//       return res.json({
+//         success: true,
+//         data: response.data.entity,  // Liveness check details
+//       });
+//     } else {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Liveness check failed. Please try again.",
+//       });
+//     }
+//   } catch (error) {
+//     console.error("Error performing liveness check:", error.message);
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//       error: error.message,
+//     });
+//   }
+// };
 
 const SELFIE_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/selfie-id";
 const SELFIE_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/selfie-id"; // Use this in production
@@ -265,6 +266,66 @@ const verifyAddress = async (req, res) => {
     }
   } catch (error) {
     console.error("Error verifying address:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+const LIVENESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/liveness-check";
+const LIVENESS_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/liveness-check"; // Use this in production
+
+// Convert image to base64
+const convertImageToBase64 = (imagePath) => {
+  const imageBuffer = fs.readFileSync(imagePath);  // Read the image file
+  return imageBuffer.toString('base64');  // Convert to base64 string
+};
+
+const performLivenessCheck = async (req, res) => {
+  try {
+    const { input_type, image } = req.body;
+
+    if (!input_type || !image) {
+      return res.status(400).json({ message: "Both input_type and image are required." });
+    }
+
+    // If the image is a local file, convert it to base64 before sending to Dojah
+    let imageBase64 = image;
+    if (typeof image === 'string' && image.startsWith('file://')) {
+      // Assuming the image is a local file path (you can adjust based on your needs)
+      imageBase64 = convertImageToBase64(image.replace('file://', ''));
+    }
+
+    const response = await axios.post(
+      LIVENESS_SANDBOX_URL, 
+      { input_type, image: imageBase64 },  // Send the base64 image here
+      {
+        headers: {
+          "AppId": process.env.DOJAH_APP_ID,
+          "Authorization": process.env.DOJAH_SECRET_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        data: response.data.entity,  // Liveness check details
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Liveness check failed. Please try again.",
+      });
+    }
+  } catch (error) {
+    console.error("Error performing liveness check:", error.message);
     res.status(500).json({
       success: false,
       message: "Internal server error",

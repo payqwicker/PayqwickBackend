@@ -1,7 +1,8 @@
 
+const fs = require("fs");
 const axios = require("axios");
 const FormData = require("form-data");
-const fs = require("fs");
+
 
 const uploadDocument = async (req, res) => {
   try {
@@ -18,8 +19,70 @@ const uploadDocument = async (req, res) => {
   }
 };
 
-const SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/document";
-const LIVE_URL = "https://api.dojah.io/api/v1/kyc/document"; // Use this in production
+// const SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/document";
+// const LIVE_URL = "https://api.dojah.io/api/v1/kyc/document"; // Use this in production
+
+// const verifyDocument = async (req, res) => {
+//   try {
+//     const { document_type } = req.body;
+//     const file = req.file; // Multer handles file upload
+
+//     if (!document_type || !file) {
+//       return res.status(400).json({ message: "Document type and image file are required" });
+//     }
+
+//     // Prepare FormData
+//     const formData = new FormData();
+//     formData.append("document_type", document_type);
+//     formData.append("input_type", "file"); // Explicitly specifying input type
+//     formData.append("image", fs.createReadStream(file.path));
+
+//     // Send request to Dojah
+//     const response = await axios.post(SANDBOX_URL, formData, {
+//       headers: {
+//         "AppId": process.env.DOJAH_APP_ID,
+//         "Authorization": process.env.DOJAH_SECRET_KEY,
+//         ...formData.getHeaders(),
+//       },
+//     });
+
+//     // Remove uploaded file after request is made
+//     fs.unlinkSync(file.path);
+
+//     // Handle response
+//     if (response.data && response.data.entity) {
+//       return res.json({
+//         success: true,
+//         data: response.data.entity, // Extracted document details
+//       });
+//     } else {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Document analysis failed",
+//       });
+//     }
+//   } catch (error) {
+//     console.error("Error verifying document:", error.message);
+
+//     // Cleanup file if there's an error
+//     if (req.file && fs.existsSync(req.file.path)) {
+//       fs.unlinkSync(req.file.path);
+//     }
+
+//     res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
+const SANDBOX_URL = "https://sandbox.dojah.io/api/v1/document/analysis";
+const LIVE_URL = "https://api.dojah.io/api/v1/document/analysis"; // Use this in production
+
+
 
 const verifyDocument = async (req, res) => {
   try {
@@ -30,13 +93,20 @@ const verifyDocument = async (req, res) => {
       return res.status(400).json({ message: "Document type and image file are required" });
     }
 
-    // Prepare FormData
+    // Step 1: Download the image from Cloudinary
+    const imageUrl = file.path;
+    const imageResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
+
+    // Step 2: Convert image to Base64
+    const imageBase64 = Buffer.from(imageResponse.data).toString("base64");
+
+    // Step 3: Prepare FormData
     const formData = new FormData();
     formData.append("document_type", document_type);
     formData.append("input_type", "file"); // Explicitly specifying input type
-    formData.append("image", fs.createReadStream(file.path));
+    formData.append("image", imageBase64);  // Send Base64 string
 
-    // Send request to Dojah
+    // Step 4: Send request to Dojah
     const response = await axios.post(SANDBOX_URL, formData, {
       headers: {
         "AppId": process.env.DOJAH_APP_ID,
@@ -45,10 +115,7 @@ const verifyDocument = async (req, res) => {
       },
     });
 
-    // Remove uploaded file after request is made
-    fs.unlinkSync(file.path);
-
-    // Handle response
+    // Step 5: Handle response
     if (response.data && response.data.entity) {
       return res.json({
         success: true,
@@ -63,11 +130,6 @@ const verifyDocument = async (req, res) => {
   } catch (error) {
     console.error("Error verifying document:", error.message);
 
-    // Cleanup file if there's an error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-
     res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -75,6 +137,11 @@ const verifyDocument = async (req, res) => {
     });
   }
 };
+
+
+
+
+
 
 
 module.exports = {uploadDocument, verifyDocument};
