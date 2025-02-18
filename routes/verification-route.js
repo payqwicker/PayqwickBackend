@@ -12,7 +12,7 @@ router.get('/verify-nin', verifyNIN);
 router.get("/verify-bvn", verifyBVN);
 router.post("/verify-document", upload.single("image"), verifyDocument);
 router.post("/verify-liveness-check", upload.single("image"), performLivenessCheck);
-router.post("/verify-selfie", verifySelfieWithID);
+router.post("/verify-selfie",upload.fields([{ name: "id_image" }, { name: "selfie_image" }]), verifySelfieWithID);
 router.post("/verify-address", verifyAddress);
 
 module.exports = router;

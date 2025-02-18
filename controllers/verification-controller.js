@@ -125,54 +125,85 @@ const verifyBVN = async (req, res) => {
 };
 
 
-const SELFIE_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/biometrics/selfie-id";
-const SELFIE_LIVE_URL = "https://api.dojah.io/api/v1/biometrics/selfie-id"; // Use this in production
+const SELFIE_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/photoid/verify";
+const SELFIE_LIVE_URL = "https://api.dojah.io/api/v1/kyc/photoid/verify"; // Use this in production
 const verifySelfieWithID = async (req, res) => {
   try {
-    const { id_type, id_number, input_type, selfie_image, id_image } = req.body;
+    const { id_url, selfie_url, first_name, last_name } = req.body;
 
-    // ✅ Validate required fields
-    if (!id_type || !id_number || !input_type || !selfie_image || !id_image) {
+    // Validate required fields
+    if (!id_url || !selfie_url) {
       return res.status(400).json({
         success: false,
-        message: "id_type, id_number, input_type, selfie_image, and id_image are required.",
+        message: 'id_url and selfie_url are required.',
       });
     }
 
-    // ✅ Send request to Dojah API
+    // Function to fetch image from URL and convert to Base64
+    const fetchImageAsBase64 = async (imageUrl) => {
+      const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+      const base64String = Buffer.from(response.data, 'binary').toString('base64');
+      return base64String;
+    };
+
+    // Fetch and convert images
+    const photoid_image = await fetchImageAsBase64(id_url);
+    const selfie_image = await fetchImageAsBase64(selfie_url);
+
+    // Prepare request payload
+    const payload = {
+      photoid_image,
+      selfie_image,
+      first_name, // Optional
+      last_name,  // Optional
+    };
+
+    // Send request to Dojah API
     const response = await axios.post(
-      SELFIE_SANDBOX_URL, 
-      { id_type, id_number, input_type, selfie: selfie_image, id: id_image },
+      SELFIE_SANDBOX_URL, // Use SELFIE_LIVE_URL in production
+      payload,
       {
         headers: {
-          "AppId": process.env.DOJAH_APP_ID,
-          "Authorization": process.env.DOJAH_SECRET_KEY,
-          "Content-Type": "application/json",
+          AppId: process.env.DOJAH_APP_ID,
+          Authorization: process.env.DOJAH_SECRET_KEY,
+          'Content-Type': 'application/json',
         },
       }
     );
 
-    // ✅ Handle API response
-    if (response.data && response.data.entity) {
-      return res.json({
-        success: true,
-        data: response.data.entity,  // Verification details
-      });
+    // Handle API response
+    const { data } = response;
+    if (data && data.entity) {
+      const { confidence_value, match } = data.entity.selfie;
+      if (confidence_value >= 90 && match) {
+        return res.json({
+          success: true,
+          message: 'Selfie verification successful.',
+          data: data.entity,
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Selfie verification failed. Images do not match.',
+          data: data.entity,
+        });
+      }
     } else {
       return res.status(400).json({
         success: false,
-        message: "Selfie verification failed. Please try again.",
+        message: 'Selfie verification failed. Invalid response from Dojah.',
       });
     }
   } catch (error) {
-    console.error("Error verifying selfie with ID:", error.message);
+    console.error('Error verifying selfie with ID:', error.message);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: 'Internal server error',
       error: error.message,
     });
   }
 };
+
 
 const ADDRESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/address";
 const ADDRESS_LIVE_URL = "https://api.dojah.io/api/v1/kyc/address"; // Use this in production
@@ -237,31 +268,6 @@ const verifyAddress = async (req, res) => {
 
 const LIVENESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/ml/liveness/";
 const LIVENESS_LIVE_URL = "https://api.dojah.io/api/v1/ml/liveness/"; // Use this in production
-
-
-// Convert image to base64
-const convertImageToBase64 = (imagePath) => {
-  const imageBuffer = fs.readFileSync(imagePath);  // Read the image file
-  return imageBuffer.toString('base64');  // Convert to base64 string
-};
-
-// Download an image and convert it to Base64
-const convertUrlToBase64 = (url) => {
-  return new Promise((resolve, reject) => {
-    https.get(url, (response) => {
-      let data = [];
-      response.on('data', (chunk) => {
-        data.push(chunk);
-      });
-      response.on('end', () => {
-        const buffer = Buffer.concat(data);
-        resolve(buffer.toString('base64'));
-      });
-      response.on('error', (err) => reject(err));
-    });
-  });
-};
-
 const performLivenessCheck = async (req, res) => {
   try {
     const { input_type } = req.body;

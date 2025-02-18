@@ -16,6 +16,12 @@ const walletSchema = new Schema({
     type: Number,
     default: 0,
   },
+  currency: {
+    type: String,
+    required: true,
+    enum: ['USD', 'NGN', 'EUR', 'GBP'], // Add more currencies as required
+    default: 'NGN', // Default currency set to NGN
+  },
 });
 
 const Wallet = mongoose.model('Wallet', walletSchema);
