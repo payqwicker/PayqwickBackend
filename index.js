@@ -24,6 +24,7 @@ const cryptoRouter = require("./routes/crypto-route");
 const prepaidElectricityRouter = require("./routes/prepaid-electricty-route");
 const southAfricaRouter = require("./routes/south-africa-route");
 const uploadRouter = require("./routes/upload-route");
+const notificationsRouter = require("./routes/notification-route");
 
 const cors = require("cors");
 const cloudinary = require("cloudinary").v2;
@@ -79,6 +80,7 @@ app.use("/api/secret", secretRouter);
 app.use("/api", verificationRouter);
 app.use("/api/south-africa", southAfricaRouter);
 app.use("/api/upload", uploadRouter)
+app.use("/api/notifications", notificationsRouter)
 
 
 const port = process.env.PORT || 4000;
