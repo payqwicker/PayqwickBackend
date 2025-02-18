@@ -6,8 +6,9 @@ const {
   createTransaction,
   verifyTransaction,
   callBackResponse,
-  transactionsHistory
+  getRecentTransaction
 } = require("../controllers/transaction-controller");
+const authMiddleware = require("../authMiddleware/authMiddleware");
 
 // Route to get transactions by user_id
 
@@ -15,6 +16,6 @@ router.post("/all-transactions", getAllTransactions);
 router.post("/add-transaction", createTransaction);
 router.post("/verify", verifyTransaction);
 router.post("/callback_url", callBackResponse);
-router.get("/transaction-history/:id", transactionsHistory);
+router.get("/history/:userId",authMiddleware, getRecentTransaction);
 router.get("/:user_id", getTransactionsByUserId);
 module.exports = router;

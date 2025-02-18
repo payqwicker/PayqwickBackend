@@ -12,6 +12,7 @@ const {
   computeToCompareHash
 } = require("../utils/functions");
 const TransactionHistory = require("../models/TransactionHistory");
+
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 
 const getAllTransactions = async (req, res, next) => {
@@ -82,6 +83,7 @@ async function createTransaction(req, res) {
     res.status(500).json({ error: "Internal Server Error" });
   }
 }
+
 const getTransactionsByUserId = async (req, res) => {
   const { user_id } = req.params;
 
@@ -319,28 +321,49 @@ const callBackResponse = async (req, res) => {
 
 
 
-const transactionsHistory = async (req, res) => {
-  const { id } = req.params;
+// const transactionsHistory = async (req, res) => {
+//   const { id } = req.params;
 
+//   try {
+//     const transactionHistory = await TransactionHistory.find({
+//       userId: id,
+//     }).sort({ transactionDate: -1 });
+//     if (!transactionHistory || transactionHistory.length === 0) {
+//       return res
+//         .status(403)
+//         .json({ message: "No transaction found", ok: false });
+//     }
+//     return res.status(200).json({ transactionHistory, ok: true });
+//   } catch (error) {
+//     console.error(error);
+//     return res.status(500).json({ message: "Server error", ok: false });
+//   }
+// };
+
+const getRecentTransaction = async (req, res) => {
   try {
-    const transactionHistory = await TransactionHistory.find({
-      userId: id,
-    }).sort({ transactionDate: -1 });
-    if (!transactionHistory || transactionHistory.length === 0) {
-      return res
-        .status(403)
-        .json({ message: "No transaction found", ok: false });
+    const userId = req.user.id; // Extract user ID from the authenticated request
+
+    const recentTransaction = await Transaction.findOne({ user_id: userId })
+      .sort({ dateUTC: -1 }) // Sort in descending order (most recent first)
+      .limit(1); // Fetch only the latest transaction
+
+    if (!recentTransaction) {
+      return res.status(404).json({ message: 'No transactions found' });
     }
-    return res.status(200).json({ transactionHistory, ok: true });
+
+    res.status(200).json(recentTransaction);
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error", ok: false });
+    console.error('Error fetching recent transaction:', error);
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
+
+
 module.exports = {
   getTransactionsByUserId,
   getAllTransactions,
-   transactionsHistory,
+  getRecentTransaction,
   createTransaction,
   verifyTransaction,
   callBackResponse
