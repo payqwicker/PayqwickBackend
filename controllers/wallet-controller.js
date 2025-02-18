@@ -7,6 +7,7 @@ const dotenv = require('dotenv');
 
 
 
+
 const getWallet = async (req, res) => {
   const authHeader = req.header("Authorization");
 
@@ -262,71 +263,140 @@ const debitWallet = async (req, res) => {
 ///response handler
 
 // Function to fetch account balance
-async function getAccountBalance(req, res, next) {
+// async function getAccountBalance(req, res, next) {
   
-   // Authorization Header 
-    const authHeader = req.header("Authorization");
+//    // Authorization Header 
+//     const authHeader = req.header("Authorization");
 
-    if (!authHeader) {
-      return res.status(401).json({ message: "No token provided", ok: false });
-    }
+//     if (!authHeader) {
+//       return res.status(401).json({ message: "No token provided", ok: false });
+//     }
   
-    // Extract the token from the "Authorization" header
-    const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
+//     // Extract the token from the "Authorization" header
+//     const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
   
-    if (!token) {
-      return res.status(401).json({ message: "No token provided", ok: false });
-    }
+//     if (!token) {
+//       return res.status(401).json({ message: "No token provided", ok: false });
+//     }
   
-    // Extract the user ID and amount to debit from the request body
-    const { userId} = req.body;
+//     // Extract the user ID and amount to debit from the request body
+//     const { userId} = req.body;
   
-    if (!userId) {
-      return res
-        .status(400)
-        .json({ message: "User ID  required", ok: false });
-    }
-  try {
+//     if (!userId) {
+//       return res
+//         .status(400)
+//         .json({ message: "User ID  required", ok: false });
+//     }
+//   try {
    
 
-  // Verify and decode the token
-  const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+//   // Verify and decode the token
+//   const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
-  // Extract the user ID from the decoded token
-  const tokenUserId = decoded.userId;
+//   // Extract the user ID from the decoded token
+//   const tokenUserId = decoded.userId;
 
-  if (tokenUserId !== userId) {
-    return res
-      .status(403)
-      .json({ message: "Token does not match the user ID", ok: false });
-  }
-  // Retrieve the wallet for the specified user
-  const wallet = await Wallet.findOne({ user: userId });
+//   if (tokenUserId !== userId) {
+//     return res
+//       .status(403)
+//       .json({ message: "Token does not match the user ID", ok: false });
+//   }
+//   // Retrieve the wallet for the specified user
+//   const wallet = await Wallet.findOne({ user: userId });
 
-  if (!wallet) {
-    return res
-      .status(404)
-      .json({ message: "Wallet not found for the user", ok: false });
-  }
+//   if (!wallet) {
+//     return res
+//       .status(404)
+//       .json({ message: "Wallet not found for the user", ok: false });
+//   }
 
  
-      // Return the up to date wallet balance.
-    return res.status(201).json({ ok: true,
-      data: {
-      wallet
-    }});
+//       // Return the up to date wallet balance.
+//     return res.status(201).json({ ok: true,
+//       data: {
+//       wallet
+//     }});
     
-  } catch (error) {
-    console.error('Error fetching account balance:', error.message);
-  }
-}
+//   } catch (error) {
+//     console.error('Error fetching account balance:', error.message);
+//   }
+// }
 
-// Execute the function
+// async function getAccountBalance(req, res, next) {
+//   // Authorization Header
+//   const authHeader = req.header("Authorization");
+
+//   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+//     return res.status(401).json({ message: "No valid token provided", ok: false });
+//   }
+
+//   // Extract the token
+//   const token = authHeader.split(" ")[1];
+
+//   if (!token) {
+//     return res.status(401).json({ message: "Invalid token format", ok: false });
+//   }
+
+//   // Extract the user ID from the request body
+//   const { userId } = req.body;
+
+//   if (!userId) {
+//     return res.status(400).json({ message: "User ID is required", ok: false });
+//   }
+
+//   try {
+//     // Verify and decode the token
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+//     // Extract the user ID from the decoded token
+//     const tokenUserId = decoded.userId;
+
+//     if (tokenUserId !== userId) {
+//       return res.status(403).json({ message: "Token does not match the user ID", ok: false });
+//     }
+
+//     // Retrieve the wallet for the specified user
+//     const wallet = await Wallet.findOne({ user: userId });
+
+//     if (!wallet) {
+//       return res.status(404).json({ message: "Wallet not found for the user", ok: false });
+//     }
+
+//     // Return the updated wallet balance
+//     return res.status(200).json({ ok: true, data: { wallet } });
+
+//   } catch (error) {
+//     console.error("Error fetching account balance:", error.message);
+//     return res.status(500).json({ message: "Internal Server Error", ok: false });
+//   }
+// }
+
+const getWalletBalance = async (req, res) => {
+  try {
+    const userId = req.user.id; // Extract user ID from the authenticated request
+
+    const wallet = await Wallet.findOne({ user: userId });
+
+    if (!wallet) {
+      return res.status(404).json({ message: 'Wallet not found' });
+    }
+
+    res.status(200).json({
+      balance: wallet.balance,
+      sabalance: wallet.sabalance,
+      currency: wallet.currency,
+    });
+  } catch (error) {
+    console.error('Error fetching wallet balance:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
 
 
 module.exports = {
   creditWallet,
   debitWallet,
   getWallet,
-  getAccountBalance
+  getWalletBalance
 };
