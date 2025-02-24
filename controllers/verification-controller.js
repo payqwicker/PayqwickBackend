@@ -2,12 +2,10 @@ require("dotenv").config();
 const User = require("../models/User");
 const axios = require("axios");
 require('dotenv').config();
-const fs = require('fs'); // Make sure to import fs module
-const https = require('https');
+const fs = require("fs");
+const path = require("path");
 const FormData = require("form-data");
-
-
-
+const { createWallet } = require("./wallet-controller");
 
 
 
@@ -17,7 +15,7 @@ const selectVerificationMethod = async (req, res) => {
   const userId = req.user.userId; // Get user ID from authenticated session
 
   // Valid verification methods
-  const validMethods = ["NIN", "Passport", "Driver’s License", "Voter’s Card"];
+  const validMethods = ["NIN", "Passport", "Driver’s License", "Voter’s Card", "BVN"];
 
   // Validate verification method
   if (!verification_method || !validMethods.includes(verification_method)) {
@@ -41,39 +39,61 @@ const selectVerificationMethod = async (req, res) => {
   }
 };
 
-const SANDBOX = `https://sandbox.dojah.io`;
-const DOJAH = `https://api.dojah.io`; // Production URL
 const verifyNIN = async (req, res) => {
   try {
-    const { nin } = req.query; // FIXED: Extract NIN from query parameters
-    console.log(req.query);
+    console.log("Request User:", req.user); // Debugging log
+
+    if (!req.user || !req.user.email) {
+      return res.status(401).json({ message: "Unauthorized: User not authenticated." });
+    }
+
+    const { nin } = req.query;
+    console.log("Received NIN:", nin);
 
     if (!nin) {
       return res.status(400).json({ message: "NIN is required" });
     }
 
-    const response = await axios.get(`${SANDBOX}/api/v1/kyc/nin`, {
+    // Retrieve user from DB
+    const user = await User.findOne({ email: req.user.email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found in database" });
+    }
+
+    // Call Dojah API to verify NIN
+    const response = await axios.get(`${process.env.DOJAH_BASE_URL}/api/v1/kyc/nin`, {
       headers: {
         'AppId': process.env.DOJAH_APP_ID,
         'Authorization': process.env.DOJAH_SECRET_KEY,
         'Content-Type': 'application/json'
       },
-      params: { nin } // Ensure NIN is sent as a query parameter
+      params: { nin }
     });
 
     if (response.data && response.data.entity) {
+      console.log("Dojah Response:", response.data.entity);
+
+      // Update user in the database with NIN verification data
+      user.isKYC = true;
+      user.verification_method = 'NIN';
+      user.verification_data = response.data.entity;
+
+      await user.save();
+
       res.json({
         success: true,
-        data: response.data.entity
+        message: "NIN verified successfully",
+        data: user
       });
     } else {
       res.status(404).json({
         success: false,
-        message: "NIN not found"
+        message: "NIN verification failed"
       });
     }
   } catch (error) {
-    console.error('Error verifying NIN:', error.message);
+    console.error('Error verifying NIN:', error.response?.data || error.message);
     res.status(500).json({
       success: false,
       message: "Internal server error"
@@ -81,126 +101,212 @@ const verifyNIN = async (req, res) => {
   }
 };
 
-const BVN_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/bvn/advance";
-const BVN_LIVE_URL = "https://api.dojah.io/api/v1/kyc/bvn/advance"; // Use this in production
 const verifyBVN = async (req, res) => {
   try {
-    const { bvn } = req.query; // Get BVN from query params
+    console.log("Request User:", req.user); // Debugging log
+
+    if (!req.user || !req.user.email) {
+      return res.status(401).json({ message: "Unauthorized: User not authenticated." });
+    }
+
+    const { bvn } = req.query;
+    console.log("Received BVN:", bvn);
 
     if (!bvn) {
       return res.status(400).json({ message: "BVN is required" });
     }
 
-    const response = await axios.get(BVN_SANDBOX_URL, {
+    // Retrieve user from DB (instead of only relying on req.user)
+    const user = await User.findOne({ email: req.user.email });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found in database" });
+    }
+
+    // Call Dojah API to verify BVN
+    const response = await axios.get(`${process.env.DOJAH_BASE_URL}/api/v1/kyc/bvn/advance`, {
       headers: {
-        "AppId": process.env.DOJAH_APP_ID,
-        "Authorization": process.env.DOJAH_SECRET_KEY,
-        "Content-Type": "application/json",
+        'AppId': process.env.DOJAH_APP_ID,
+        'Authorization': process.env.DOJAH_SECRET_KEY,
+        'Content-Type': 'application/json'
       },
-      params: { bvn },
+      params: { bvn }
     });
 
     if (response.data && response.data.entity) {
-      // BVN is valid
-      return res.json({
+      console.log("Dojah Response:", response.data.entity);
+
+      // Update user in the database with BVN verification data
+      user.bvn = bvn;
+      user.isKYC = true;
+      user.verification_method = 'BVN';
+      user.verification_data = response.data.entity;
+
+      await user.save();
+
+      res.json({
         success: true,
-        data: response.data.entity, // BVN details
+        message: "BVN verified successfully",
+        data: user
       });
     } else {
-      // BVN verification failed, request a supporting document
-      return res.status(400).json({
+      res.status(404).json({
         success: false,
-        message: "BVN verification failed. Please upload a supporting document such as a bank statement.",
-        required_document: "Bank Statement",
+        message: "BVN verification failed"
       });
     }
   } catch (error) {
-    console.error("Error verifying BVN:", error.message);
+    console.error('Error verifying BVN:', error.response?.data || error.message);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
-      error: error.message,
+      message: "Internal server error"
     });
   }
 };
 
-
-const SELFIE_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/kyc/photoid/verify";
-const SELFIE_LIVE_URL = "https://api.dojah.io/api/v1/kyc/photoid/verify"; // Use this in production
-const verifySelfieWithID = async (req, res) => {
+const performLivenessCheck = async (req, res) => {
   try {
-    const { id_url, selfie_url, first_name, last_name } = req.body;
+    const { input_type, image } = req.body;
 
-    // Validate required fields
-    if (!id_url || !selfie_url) {
-      return res.status(400).json({
-        success: false,
-        message: 'id_url and selfie_url are required.',
-      });
+    if (!input_type || !image) {
+      return res.status(400).json({ message: "Both input_type and image are required." });
     }
 
-    // Function to fetch image from URL and convert to Base64
-    const fetchImageAsBase64 = async (imageUrl) => {
-      const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-      const base64String = Buffer.from(response.data, 'binary').toString('base64');
-      return base64String;
-    };
+    // ✅ Step 1: Download Image from Cloudinary
+    const imageResponse = await axios.get(image, { responseType: "arraybuffer" });
 
-    // Fetch and convert images
-    const photoid_image = await fetchImageAsBase64(id_url);
-    const selfie_image = await fetchImageAsBase64(selfie_url);
+    // ✅ Step 2: Convert Image to Base64
+    const imageBase64 = Buffer.from(imageResponse.data).toString("base64");
 
-    // Prepare request payload
-    const payload = {
-      photoid_image,
-      selfie_image,
-      first_name, // Optional
-      last_name,  // Optional
-    };
-
-    // Send request to Dojah API
+    // ✅ Step 3: Send Base64 Image to Dojah
     const response = await axios.post(
-      SELFIE_SANDBOX_URL, // Use SELFIE_LIVE_URL in production
+      `${process.env.DOJAH_BASE_URL}/api/v1/ml/liveness/`,
+      { input_type, image: imageBase64 },
+      {
+        headers: {
+          "AppId": process.env.DOJAH_APP_ID,
+          "Authorization": process.env.DOJAH_SECRET_KEY,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // ✅ Step 4: Handle Dojah Response
+    if (response.data && response.data.entity) {
+      return res.json({
+        success: true,
+        message: "Liveness check successful",
+        data: response.data.entity,
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Liveness check failed. Please try again.",
+      });
+    }
+  } catch (error) {
+    console.error("Error performing liveness check:", error.response?.data || error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.response?.data || error.message,
+    });
+  }
+};
+
+const removeBase64Metadata = (base64String) => {
+  return base64String.replace(/^data:image\/\w+;base64,/, "");
+};
+
+const verifySelfieAndID = async (req, res) => {
+  try {
+    if (!req.files || !req.files.photoid_image || !req.files.selfie_image) {
+      return res.status(400).json({ message: "Both ID and selfie images are required" });
+    }
+
+    // ✅ Ensure file paths exist
+    const photoidFile = req.files.photoid_image[0];
+    const selfieFile = req.files.selfie_image[0];
+
+    console.log("Photo ID Path:", photoidFile.path);
+    console.log("Selfie Path:", selfieFile.path);
+
+    // ✅ Validate file type (only allow JPEG or PNG)
+    const allowedMimeTypes = ["image/jpeg", "image/png"];
+    if (!allowedMimeTypes.includes(photoidFile.mimetype) || !allowedMimeTypes.includes(selfieFile.mimetype)) {
+      return res.status(400).json({ success: false, message: "Invalid file type. Only JPEG and PNG are allowed." });
+    }
+
+    // ✅ Convert images to Base64
+    const photoidBase64 = fs.readFileSync(photoidFile.path, "base64");
+    const selfieBase64 = fs.readFileSync(selfieFile.path, "base64");
+
+    // ✅ Remove metadata prefix as required by Dojah API
+    const cleanedPhotoidBase64 = removeBase64Metadata(`data:${photoidFile.mimetype};base64,${photoidBase64}`);
+    const cleanedSelfieBase64 = removeBase64Metadata(`data:${selfieFile.mimetype};base64,${selfieBase64}`);
+
+    console.log("Photo ID Base64 (trimmed):", cleanedPhotoidBase64.substring(0, 100) + "...");
+    console.log("Selfie Base64 (trimmed):", cleanedSelfieBase64.substring(0, 100) + "...");
+
+    // ✅ Prepare API payload
+    const payload = {
+      photoid_image: cleanedPhotoidBase64,
+      selfie_image: cleanedSelfieBase64,
+      first_name: req.body.first_name || "Unknown",
+      last_name: req.body.last_name || "Unknown",
+    };
+
+    console.log("Payload Sent to Dojah:", JSON.stringify(payload, null, 2));
+
+    // ✅ Send request to Dojah API
+    const response = await axios.post(
+      `${process.env.DOJAH_BASE_URL}/api/v1/kyc/photoid/verify`,
       payload,
       {
         headers: {
           AppId: process.env.DOJAH_APP_ID,
           Authorization: process.env.DOJAH_SECRET_KEY,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       }
     );
 
-    // Handle API response
-    const { data } = response;
-    if (data && data.entity) {
-      const { confidence_value, match } = data.entity.selfie;
-      if (confidence_value >= 90 && match) {
-        return res.json({
-          success: true,
-          message: 'Selfie verification successful.',
-          data: data.entity,
-        });
-      } else {
-        return res.status(400).json({
-          success: false,
-          message: 'Selfie verification failed. Images do not match.',
-          data: data.entity,
-        });
-      }
+    // ✅ Handle API Response
+    const { success, data } = response.data;
+
+    if (success && data?.confidence >= 60) {
+      return res.json({
+        success: true,
+        message: "Selfie and ID verification successful",
+        confidence: data.confidence,
+        data,
+      });
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Selfie verification failed. Invalid response from Dojah.',
+        message: "Verification failed. Please try again with a clearer image.",
+        confidence: data?.confidence || 0,
       });
     }
   } catch (error) {
-    console.error('Error verifying selfie with ID:', error.message);
+    console.error("Error verifying Selfie & ID:", error.response?.data || error.message);
     res.status(500).json({
       success: false,
-      message: 'Internal server error',
-      error: error.message,
+      message: "Internal server error",
+      error: error.response?.data || error.message,
     });
+  } finally {
+    // ✅ Delete uploaded files after processing
+    if (req.files) {
+      Object.values(req.files)
+        .flat()
+        .forEach((file) => {
+          fs.unlink(file.path, (err) => {
+            if (err) console.error("Error deleting file:", file.path, err);
+          });
+        });
+    }
   }
 };
 
@@ -266,60 +372,6 @@ const verifyAddress = async (req, res) => {
 };
 
 
-const LIVENESS_SANDBOX_URL = "https://sandbox.dojah.io/api/v1/ml/liveness/";
-const LIVENESS_LIVE_URL = "https://api.dojah.io/api/v1/ml/liveness/"; // Use this in production
-const performLivenessCheck = async (req, res) => {
-  try {
-    const { input_type } = req.body;
-    const file = req.file; // Multer handles file upload
-
-    if (!input_type || !file) {
-      return res.status(400).json({ message: "Both input_type and image file are required." });
-    }
-
-    // Step 1: Download the image from Cloudinary
-    const imageUrl = file.path;
-    const imageResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
-
-    // Step 2: Convert image to Base64
-    const imageBase64 = Buffer.from(imageResponse.data).toString("base64");
-
-    // Step 3: Prepare FormData
-    const formData = new FormData();
-    formData.append("input_type", "file"); // Explicitly specifying input type
-    formData.append("image", imageBase64);  // Send Base64 string
-
-    // Step 4: Send request to Dojah
-    const response = await axios.post(LIVENESS_SANDBOX_URL, formData, {
-      headers: {
-        "AppId": process.env.DOJAH_APP_ID,
-        "Authorization": process.env.DOJAH_SECRET_KEY,
-        ...formData.getHeaders(),
-      },
-    });
-
-    // Step 5: Handle response
-    if (response.data && response.data.entity) {
-      return res.json({
-        success: true,
-        data: response.data.entity,  // Liveness check details
-      });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Liveness check failed. Please try again.",
-      });
-    }
-  } catch (error) {
-    console.error("Error performing liveness check:", error.message);
-
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
-  }
-};
 
 
 
@@ -334,6 +386,6 @@ module.exports = {
   verifyNIN,
   verifyBVN,
   performLivenessCheck,
-  verifySelfieWithID,
-  verifyAddress
+  verifySelfieAndID,
+  verifyAddress,
 };

@@ -13,6 +13,7 @@ const disposableDomains = require('disposable-email-domains');
 const wildcardDomains = require('disposable-email-domains/wildcard');
 const { deleteSession, storeSession } = require("../services/redisService");
 
+
 const rateLimit = {};
 
 const isDisposableEmail = (email) => {
@@ -56,6 +57,7 @@ const isDisposableEmail = (email) => {
          additionalDisposableDomains.includes(domain);
 };
 
+
 const signUp = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -84,9 +86,8 @@ const signUp = async (req, res) => {
       return res.status(400).json({ message: "User already exists!", ok: false });
     }
     
-    const otp = generateRandomUniqueOTP(6); // Generate OTP
-    const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving it
-    
+    const otp = generateRandomUniqueOTP(6);
+    const hashedOtp = await bcrypt.hash(otp, 10);
     const hashedPassword = await bcrypt.hash(password, 10);
     
     const newUser = new User({
@@ -95,16 +96,21 @@ const signUp = async (req, res) => {
       country,
       phone,
       password: hashedPassword,
-      emailVerificationOTP: hashedOtp, // Save the hashed OTP
-      emailVerificationOTPExpires: new Date(Date.now() + 5 * 60 * 1000), // OTP expiration time
+      emailVerificationOTP: hashedOtp,
+      emailVerificationOTPExpires: new Date(Date.now() + 5 * 60 * 1000),
     });
-    
-    const token = jwt.sign({ userId: newUser._id, email: newUser.email }, process.env.SECRET_KEY, { expiresIn: "1d" });
+
     await newUser.save();
-    await new Wallet({ user: newUser._id }).save();
-    await new SWallet({ user: newUser._id }).save();
     
-    // Send OTP via email
+    const token = jwt.sign(
+      { userId: newUser._id, email: newUser.email },
+      process.env.SECRET_KEY,
+      { expiresIn: "1d" }
+    );
+    
+    // Note: Wallet creation is removed from here. It will be created during BVN verification.
+    
+    // Send OTP via email.
     const transporter = nodemailer.createTransport({
       service: "Gmail",
       auth: { user: process.env.AUTH_EMAIL, pass: process.env.AUTH_PASS },
@@ -114,7 +120,7 @@ const signUp = async (req, res) => {
       from: process.env.AUTH_SENDER,
       to: email,
       subject: "Email Verification OTP",
-      text: `Your OTP is: ${otp}`, // Plain OTP in email
+      text: `Your OTP is: ${otp}`,
     };
     
     transporter.sendMail(message, (err, info) => {

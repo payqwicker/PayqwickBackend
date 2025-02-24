@@ -1,0 +1,4 @@
+[2025-02-22T08:00:00.344Z] Cron job started to invalidate expired OTPs.
+[2025-02-22T08:00:00.356Z] Cron job completed successfully: Expired OTPs invalidated.
+[2025-02-24T08:00:00.418Z] Cron job started to invalidate expired OTPs.
+[2025-02-24T08:00:00.423Z] Cron job completed successfully: Expired OTPs invalidated.

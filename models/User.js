@@ -23,7 +23,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
-
   isVerified: {
     type: Boolean,
     default: false,
@@ -32,7 +31,6 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-
   userType: {
     type: String,
     enum: ["admin", "user", "user2"],
@@ -59,11 +57,25 @@ const userSchema = new mongoose.Schema({
     enum: ['NIN', 'Passport', 'Driver’s License', 'Voter’s Card', 'BVN'],
   },
   verification_data: {
-    type: Map, // Allows dynamic key-value storage
+    type: Map,
     of: String,
   },
-  otpRequestCount: { type: Number, default: 0 },  // Tracks OTP request count per hour
-  otpRequestWindow: { type: Date },
+  otpRequestCount: { 
+    type: Number, 
+    default: 0 
+  },
+  otpRequestWindow: { 
+    type: Date 
+  },
+  pagaAccountNumber: {
+    type: String,
+    unique: true,
+    sparse: true, // Allows null values for users without a Paga account
+  },
+  bvn: {
+    type: String,
+    default: null,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -73,10 +85,6 @@ const userSchema = new mongoose.Schema({
     default: Date.now,
   },
 });
-
-
-
-
 
 const User = mongoose.model('User', userSchema);
 

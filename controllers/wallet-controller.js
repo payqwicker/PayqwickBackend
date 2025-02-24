@@ -1,402 +1,139 @@
-const Wallet = require("../models/Wallet");
-const jwt = require("jsonwebtoken");
-const https = require("https");
-const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
-const dotenv = require('dotenv');
+require("dotenv").config();
+const axios = require("axios");
+const crypto = require("crypto");
+const Wallet = require("../models/Wallet"); // Import Wallet model
+const mongoose = require("mongoose");
 
+const PAGA_BASE_URL = process.env.PAGA_BASE_URL;
+const PAGA_PUBLIC_KEY = process.env.PAGA_PUBLIC_KEY;
+const PAGA_SECRET_KEY = process.env.PAGA_SECRET_KEY;
+const PAGA_HMAC_KEY = process.env.PAGA_HMAC_KEY;
 
-
-
-const getWallet = async (req, res) => {
-  const authHeader = req.header("Authorization");
-
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the token from the "Authorization" header
-  const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
-
-  if (!token) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the user ID from the request body
-  const { userId } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ message: "User ID is required", ok: false });
-  }
-
-  try {
-    // Verify and decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-
-    // Extract the user ID from the decoded token
-    const tokenUserId = decoded.userId;
-
-    if (tokenUserId !== userId) {
-      return res
-        .status(403)
-        .json({ message: "Token does not match the user ID", ok: false });
-    }
-
-    // Retrieve the wallet for the specified user
-    const wallet = await Wallet.findOne({ user: userId });
-
-    if (!wallet) {
-      return res
-        .status(404)
-        .json({ message: "Wallet not found for the user", ok: false });
-    }
-
-    return res.status(200).json({
-      ok: true,
-      wallet: {
-        id: wallet._id,
-        user: wallet.user,
-        balance: wallet.balance,
-      },
-    });
-  } catch (error) {
-    console.error(error);
-    return res.status(401).json({ message: "Token is invalid", ok: false });
-  }
+const generateHMAC = (data) => {
+  return crypto.createHmac("sha512", PAGA_HMAC_KEY).update(data).digest("hex");
 };
 
-const creditWallet = async (req, res) => {
-  const authHeader = req.header("Authorization");
-
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the token from the "Authorization" header
-  const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
-
-  if (!token) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the user ID, amount, and reference from the request body
-  const { userId, amount, reference } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ message: "User ID is required", ok: false });
-  }
-
-  if (!amount || isNaN(amount)) {
-    return res
-      .status(400)
-      .json({ message: "A valid amount is required", ok: false });
-  }
-
-  if (!reference) {
-    return res
-      .status(400)
-      .json({ message: "Payment reference ID is required", ok: false });
-  }
-
+const createWallet = async (params) => {
   try {
-    // Verify and decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+    const referenceNumber = `REF${Date.now()}`;
+    const accountReference = `ACCT_REF_${Date.now()}`;
 
-    // Extract the user ID from the decoded token
-    const tokenUserId = decoded.userId;
-
-    if (tokenUserId !== userId) {
-      return res
-        .status(403)
-        .json({ message: "Token does not match the user ID", ok: false });
-    }
-
-    // Make a request to Paystack's API to verify the payment reference
-    const paystackVerifyUrl = `https://api.paystack.co/transaction/verify/${reference}`;
-
-    const options = {
-      hostname: "api.paystack.co",
-      port: 443,
-      path: paystackVerifyUrl,
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, // Replace with your Paystack secret key
-      },
+    const requestData = {
+      referenceNumber,
+      accountName: params.accountName,
+      firstName: params.firstName,
+      lastName: params.lastName,
+      phoneNumber: params.phoneNumber || null,
+      email: params.email || null,
+      financialIdentificationNumber: params.bvn || null,
+      accountReference,
+      creditBankId: params.creditBankId || null,
+      creditBankAccountNumber: params.creditBankAccountNumber || null,
+      callbackUrl: params.callbackUrl || null,
+      fundingTransactionLimit: params.fundingTransactionLimit || null,
     };
 
-    // Make the request to Paystack
-    const paystackResponse = await new Promise((resolve, reject) => {
-      const paystackReq = https.request(options, (paystackRes) => {
-        let data = "";
-        paystackRes.on("data", (chunk) => {
-          data += chunk;
-        });
-        paystackRes.on("end", () => {
-          resolve(JSON.parse(data));
-        });
-      });
-      paystackReq.on("error", (error) => {
-        reject(error);
-      });
-      paystackReq.end();
-    });
+    // Generate HMAC hash
+    const hash = generateHMAC(
+      referenceNumber + accountReference + (params.phoneNumber || "") + (params.email || "")
+    );
 
-    // Check the response from Paystack for successful verification
-    if (paystackResponse.status === true) {
-      // Payment is verified, you can proceed to credit the wallet
-      const wallet = await Wallet.findOne({ user: userId });
-
-      if (!wallet) {
-        return res
-          .status(404)
-          .json({ message: "Wallet not found for the user", ok: false });
-      }
-
-      if (amount <= 1) {
-        return res
-          .status(400)
-          .json({ message: "Amount must be a positive value", ok: false });
-      }
-
-      // Update the wallet balance by adding the amount
-      wallet.balance += Number(amount);
-      await wallet.save();
-
-      // Return the updated wallet object
-      return res.status(200).json({
-        ok: true,
-        wallet: {
-          id: wallet._id,
-          user: wallet.user,
-          balance: wallet.balance,
+    const response = await axios.post(
+      `${PAGA_BASE_URL}/registerPersistentPaymentAccount`,
+      requestData,
+      {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${PAGA_PUBLIC_KEY}:${PAGA_SECRET_KEY}`).toString("base64")}`,
+          "Content-Type": "application/json",
+          Hash: hash,
         },
+      }
+    );
+
+    if (response.data && response.data.accountNumber) {
+      // Save Wallet to MongoDB
+      const newWallet = new Wallet({
+        user: new mongoose.Types.ObjectId(params.userId), // Ensure userId is passed correctly
+        pagaAccountNumber: response.data.accountNumber,
+        pagaAccountReference: accountReference,
       });
+
+      await newWallet.save();
+
+      console.log("Wallet Created:", newWallet);
+      return newWallet;
     } else {
-      // Payment verification failed
-      return res
-        .status(400)
-        .json({ message: "Payment verification failed", ok: false });
+      throw new Error("Failed to create a wallet with Paga.");
     }
   } catch (error) {
-    console.error(error);
-    return res.status(401).json({ message: "Token is invalid", ok: false });
+    console.error("Error creating wallet:", error);
+    return error.response?.data || error.message;
   }
 };
 
-const debitWallet = async (req, res) => {
-  const authHeader = req.header("Authorization");
-
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the token from the "Authorization" header
-  const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
-
-  if (!token) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the user ID and amount to debit from the request body
-  const { userId, amount } = req.body;
-
-  if (!userId || !amount || isNaN(amount)) {
-    return res
-      .status(400)
-      .json({ message: "User ID and a valid amount are required", ok: false });
-  }
-
-  try {
-    // Verify and decode the token
-    const decoded = jwt.verify(token, "your-secret-key");
-
-    // Extract the user ID from the decoded token
-    const tokenUserId = decoded.userId;
-
-    if (tokenUserId !== userId) {
-      return res
-        .status(403)
-        .json({ message: "Token does not match the user ID", ok: false });
-    }
-
-    // Retrieve the wallet for the specified user
-    const wallet = await Wallet.findOne({ user: userId });
-
-    if (!wallet) {
-      return res
-        .status(404)
-        .json({ message: "Wallet not found for the user", ok: false });
-    }
-
-    // Ensure that the amount to debit is a positive value and does not exceed the current balance
-    if (amount <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Amount must be a positive value", ok: false });
-    }
-
-    if (amount > wallet.balance) {
-      return res
-        .status(400)
-        .json({ message: "Insufficient balance in the wallet", ok: false });
-    }
-
-    // Update the wallet balance by subtracting the amount
-    wallet.balance -= amount;
-    await wallet.save();
-
-    // Return the updated wallet object
-    return res.status(200).json({ ok: true, wallet });
-  } catch (error) {
-    console.error(error);
-    return res.status(401).json({ message: "Token is invalid", ok: false });
-  }
-};
-
-
-/**
- * controller function to get user balance from the data base
- * @param {string} reference number
- * @param {string} 
- */
-
-///response handler
-
-// Function to fetch account balance
-// async function getAccountBalance(req, res, next) {
-  
-//    // Authorization Header 
-//     const authHeader = req.header("Authorization");
-
-//     if (!authHeader) {
-//       return res.status(401).json({ message: "No token provided", ok: false });
-//     }
-  
-//     // Extract the token from the "Authorization" header
-//     const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
-  
-//     if (!token) {
-//       return res.status(401).json({ message: "No token provided", ok: false });
-//     }
-  
-//     // Extract the user ID and amount to debit from the request body
-//     const { userId} = req.body;
-  
-//     if (!userId) {
-//       return res
-//         .status(400)
-//         .json({ message: "User ID  required", ok: false });
-//     }
-//   try {
-   
-
-//   // Verify and decode the token
-//   const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
-
-//   // Extract the user ID from the decoded token
-//   const tokenUserId = decoded.userId;
-
-//   if (tokenUserId !== userId) {
-//     return res
-//       .status(403)
-//       .json({ message: "Token does not match the user ID", ok: false });
-//   }
-//   // Retrieve the wallet for the specified user
-//   const wallet = await Wallet.findOne({ user: userId });
-
-//   if (!wallet) {
-//     return res
-//       .status(404)
-//       .json({ message: "Wallet not found for the user", ok: false });
-//   }
-
+const generateHMAC2 = (data) => {
+    return crypto.createHmac("sha512", PAGA_HMAC_KEY).update(data).digest("hex");
+  };
  
-//       // Return the up to date wallet balance.
-//     return res.status(201).json({ ok: true,
-//       data: {
-//       wallet
-//     }});
-    
-//   } catch (error) {
-//     console.error('Error fetching account balance:', error.message);
-//   }
-// }
-
-// async function getAccountBalance(req, res, next) {
-//   // Authorization Header
-//   const authHeader = req.header("Authorization");
-
-//   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-//     return res.status(401).json({ message: "No valid token provided", ok: false });
-//   }
-
-//   // Extract the token
-//   const token = authHeader.split(" ")[1];
-
-//   if (!token) {
-//     return res.status(401).json({ message: "Invalid token format", ok: false });
-//   }
-
-//   // Extract the user ID from the request body
-//   const { userId } = req.body;
-
-//   if (!userId) {
-//     return res.status(400).json({ message: "User ID is required", ok: false });
-//   }
-
-//   try {
-//     // Verify and decode the token
-//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-//     // Extract the user ID from the decoded token
-//     const tokenUserId = decoded.userId;
-
-//     if (tokenUserId !== userId) {
-//       return res.status(403).json({ message: "Token does not match the user ID", ok: false });
-//     }
-
-//     // Retrieve the wallet for the specified user
-//     const wallet = await Wallet.findOne({ user: userId });
-
-//     if (!wallet) {
-//       return res.status(404).json({ message: "Wallet not found for the user", ok: false });
-//     }
-
-//     // Return the updated wallet balance
-//     return res.status(200).json({ ok: true, data: { wallet } });
-
-//   } catch (error) {
-//     console.error("Error fetching account balance:", error.message);
-//     return res.status(500).json({ message: "Internal Server Error", ok: false });
-//   }
-// }
-
-const getWalletBalance = async (req, res) => {
-  try {
-    const userId = req.user.id; // Extract user ID from the authenticated request
-
-    const wallet = await Wallet.findOne({ user: userId });
-
-    if (!wallet) {
-      return res.status(404).json({ message: 'Wallet not found' });
+  const sendMoney = async (params) => {
+    try {
+      const referenceNumber = `PAY${Date.now()}`;
+  
+      const requestData = {
+        referenceNumber,
+        amount: params.amount, // Amount to transfer
+        currency: "NGN", // Currency is always NGN for Nigeria-based transactions
+        destinationBankUUID: params.destinationBankUUID, // Bank identifier (UUID)
+        destinationBankAccountNumber: params.destinationBankAccountNumber, // Receiver's account number
+        remarks: params.remarks || "", // Optional message for the recipient
+      };
+  
+      // Generate HMAC hash for security
+      const hash = generateHMAC2(
+        referenceNumber +
+          requestData.amount +
+          requestData.destinationBankUUID +
+          requestData.destinationBankAccountNumber
+      );
+  
+      const response = await axios.post(
+        `${PAGA_BASE_URL}/paga-webservices/business-rest/secured/depositToBank`,
+        requestData,
+        {
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${PAGA_PUBLIC_KEY}:${PAGA_SECRET_KEY}`).toString("base64")}`,
+            "Content-Type": "application/json",
+            Hash: hash,
+          },
+        }
+      );
+  
+      return response.data;
+    } catch (error) {
+      console.error("Error in sendMoney:", error);
+      return error.response?.data || error.message;
     }
+  };
 
-    res.status(200).json({
-      balance: wallet.balance,
-      sabalance: wallet.sabalance,
-      currency: wallet.currency,
-    });
+const getWalletDetails = async (req, res) => {
+  try {
+      const { userId } = req.params;
+      const wallet = await Wallet.findOne({ user: userId });
+      if (!wallet) {
+          return res.status(404).json({ success: false, message: "Wallet not found" });
+      }
+      return res.status(200).json({ success: true, data: wallet });
   } catch (error) {
-    console.error('Error fetching wallet balance:', error);
-    res.status(500).json({ message: 'Internal server error' });
+      return res.status(500).json({ success: false, message: "Error fetching wallet", error: error.message });
   }
 };
 
 
 
-module.exports = {
-  creditWallet,
-  debitWallet,
-  getWallet,
-  getWalletBalance
-};
+
+
+
+
+
+
+module.exports = {getWalletDetails, createWallet, sendMoney}

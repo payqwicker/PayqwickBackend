@@ -54,6 +54,10 @@ dotenv.config();
 const app = express();
 app.use(express.json(corsOptions));
 app.use(cors({ origin: "*" }));
+
+app.use(express.json()); // For JSON body (non-file)
+app.use(express.urlencoded({ extended: true })); // For URL-encoded body (non-file)
+
 connectDb();
 
 cloudinary.config({
