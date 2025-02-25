@@ -12,6 +12,8 @@ const validator = require("validator");
 const disposableDomains = require('disposable-email-domains');
 const wildcardDomains = require('disposable-email-domains/wildcard');
 const { deleteSession, storeSession } = require("../services/redisService");
+require('dotenv').config();
+
 
 
 const rateLimit = {};
@@ -150,9 +152,6 @@ const signUp = async (req, res) => {
   }
 };
 
-
-
-
 const getAllUsers = async (req, res, next) => {
   const { userId } = req.body;
   const user = await User.findById(userId);
@@ -183,7 +182,6 @@ const getAllUsers = async (req, res, next) => {
     console.log(error);
   }
 };
-
 
  const checkUserExists = async (req, res) => {
   const errors = validationResult(req);
@@ -270,16 +268,24 @@ const signIn = async (req, res) => {
     return res.status(400).json({ errors: errors.array(), ok: false });
   }
 
-  // Expect "identifier" which could be either an email or a payqwickerTag, and a password.
+  // Destructure identifier and password from req.body
   let { identifier, password } = req.body;
+
+  // Validate that both identifier and password are provided
+  if (!identifier || typeof identifier !== "string") {
+    return res.status(400).json({ message: "Identifier is required", ok: false });
+  }
+  if (!password || typeof password !== "string") {
+    return res.status(400).json({ message: "Password is required", ok: false });
+  }
 
   try {
     let user;
-    // If identifier is an email, search by email; otherwise, assume it's a payqwickerTag.
+    // If identifier is an email, search by email; otherwise, treat it as a username (payqwickerTag)
     if (validator.isEmail(identifier)) {
       user = await User.findOne({ email: identifier });
     } else {
-      // Normalize the tag to ensure it starts with '@'
+      // Ensure the username starts with '@' since that's how it's stored
       if (!identifier.startsWith('@')) {
         identifier = '@' + identifier;
       }
@@ -384,7 +390,6 @@ const signIn = async (req, res) => {
   }
 };
 
-
 const persistUser = async (req, res) => {
   const authHeader = req.header("Authorization");
 
@@ -477,6 +482,8 @@ const persistUser = async (req, res) => {
 };
 
 const verifyEmailOtp = async (req, res) => {
+
+
   const { email, otp } = req.body;
 
   try {

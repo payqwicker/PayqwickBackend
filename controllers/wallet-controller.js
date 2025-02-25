@@ -440,4 +440,15 @@ const transactionStatus = async (req, res) => {
 
 
 
-module.exports = { getWalletDetails, createWallet, depositToBank, getAccountBalance, getBanks, getMerchants, getMerchantServices,getMerchantAccountDetails,merchantPayment, transactionStatus  }
+module.exports = { 
+  getWalletDetails, 
+  createWallet, 
+  depositToBank, 
+  getAccountBalance, 
+  getBanks, 
+  getMerchants, 
+  getMerchantServices,
+  getMerchantAccountDetails,
+  merchantPayment, 
+  transactionStatus  
+}
