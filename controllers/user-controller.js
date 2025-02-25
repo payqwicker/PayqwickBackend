@@ -64,7 +64,18 @@ const signUp = async (req, res) => {
     return res.status(400).json({ errors: errors.array(), ok: false });
   }
 
-  let { email, full_name, phone, country, password } = req.body;
+  // Destructure required fields, including payqwickerTag
+  let { email, full_name, phone, country, password, payqwickerTag } = req.body;
+
+  // Ensure payqwickerTag is provided since it's required now
+  if (!payqwickerTag) {
+    return res.status(400).json({ message: "Payqwicker Tag is required.", ok: false });
+  }
+
+  // Ensure the tag always has an '@' at the beginning
+  if (!payqwickerTag.startsWith('@')) {
+    payqwickerTag = '@' + payqwickerTag;
+  }
 
   if (!validator.isEmail(email)) {
     return res.status(400).json({ message: "Invalid email format.", ok: false });
@@ -81,15 +92,15 @@ const signUp = async (req, res) => {
   try {
     const existingUser = await User.findOne({ email });
     const checkPhone = await User.findOne({ phone });
-    
+
     if (existingUser || checkPhone) {
       return res.status(400).json({ message: "User already exists!", ok: false });
     }
-    
+
     const otp = generateRandomUniqueOTP(6);
     const hashedOtp = await bcrypt.hash(otp, 10);
     const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     const newUser = new User({
       email,
       fullName: full_name,
@@ -98,37 +109,36 @@ const signUp = async (req, res) => {
       password: hashedPassword,
       emailVerificationOTP: hashedOtp,
       emailVerificationOTPExpires: new Date(Date.now() + 5 * 60 * 1000),
+      payqwickerTag, // Tag now guaranteed to start with '@'
     });
 
     await newUser.save();
-    
+
     const token = jwt.sign(
       { userId: newUser._id, email: newUser.email },
       process.env.SECRET_KEY,
       { expiresIn: "1d" }
     );
-    
-    // Note: Wallet creation is removed from here. It will be created during BVN verification.
-    
+
     // Send OTP via email.
     const transporter = nodemailer.createTransport({
       service: "Gmail",
       auth: { user: process.env.AUTH_EMAIL, pass: process.env.AUTH_PASS },
     });
-    
+
     const message = {
       from: process.env.AUTH_SENDER,
       to: email,
       subject: "Email Verification OTP",
       text: `Your OTP is: ${otp}`,
     };
-    
+
     transporter.sendMail(message, (err, info) => {
       if (err) {
         return res.status(500).json({ message: "Failed to send OTP email", ok: false });
       }
     });
-    
+
     return res.status(201).json({
       message: "User created successfully. OTP sent.",
       token,
@@ -139,6 +149,8 @@ const signUp = async (req, res) => {
     return res.status(500).json({ message: "Internal server error", ok: false });
   }
 };
+
+
 
 
 const getAllUsers = async (req, res, next) => {
@@ -252,214 +264,27 @@ const deleteUserById = async (req, res, next) => {
   }
 };
 
-// const signIn = async (req, res) => {
-//   const errors = validationResult(req);
-//   if (!errors.isEmpty()) {
-//     return res.status(400).json({ errors: errors.array(), ok: false });
-//   }
-
-//   let { email, password } = req.body;
-
-//   try {
-//     // Find the user by email
-//     const user = await User.findOne({ email });
-
-//     if (!user) {
-//       return res.status(401).json({ message: "User does not exist", ok: false });
-//     }
-
-//     // Compare the provided password with the stored hashed password
-//     const passwordMatch = await bcrypt.compare(password, user.password);
-
-//     if (!passwordMatch) {
-//       return res.status(401).json({ message: "Incorrect email or password", ok: false });
-//     }
-
-//     // Check if the account is verified
-//     if (!user.isVerified) {
-//       const otp = generateRandomUniqueOTP(6);
-//       const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving
-//       user.emailVerificationOTP = hashedOtp;
-//       user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
-//       await user.save();
-
-//       // Transport the email
-//       const transporter = nodemailer.createTransport({
-//         service: "Gmail",
-//         auth: {
-//           user: process.env.AUTH_EMAIL,
-//           pass: process.env.AUTH_PASS,
-//         },
-//       });
-
-//       const mailOptions = {
-//         from: process.env.AUTH_SENDER,
-//         to: email,
-//         subject: "Email Verification OTP",
-//         text: `Your OTP for email verification is: ${otp}`,
-//       };
-
-//       try {
-//         await transporter.sendMail(mailOptions);
-//         return res.status(401).json({
-//           message: "Account is not verified. A new OTP has been sent to your email.",
-//           ok: false,
-//         });
-//       } catch (emailError) {
-//         console.error("Error sending email:", emailError);
-//         return res.status(500).json({
-//           message: "Error sending verification email. Please try again later.",
-//           ok: false,
-//         });
-//       }
-//     }
-
-//     // Generate JWT access & refresh tokens
-//     const accessToken = jwt.sign(
-//       { userId: user._id, email: user.email },
-//       process.env.SECRET_KEY,
-//       { expiresIn: "15m" } // Short-lived token
-//     );
-
-//     const refreshToken = jwt.sign(
-//       { userId: user._id, email: user.email },
-//       process.env.REFRESH_SECRET,
-//       { expiresIn: "7d" } // Long-lived token
-//     );
-
-//     // Store refresh token in Redis
-//     await storeSession(user._id.toString(), refreshToken);
-
-//     // Return response
-//     return res.status(200).json({
-//       message: "Signin successful",
-//       accessToken,
-//       refreshToken,
-//       ok: true,
-//       user: {
-//         email: user.email,
-//         fullName: user.fullName,
-//         id: user._id,
-//         isVerified: user.isVerified,
-//         phone: user.phone,
-//         userType: user.userType,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Sign-in error:", error);
-//     return res.status(500).json({ message: "Internal server error", ok: false });
-//   }
-// };
-
-// const signIn = async (req, res) => {
-//   const errors = validationResult(req);
-//   if (!errors.isEmpty()) {
-//     return res.status(400).json({ errors: errors.array(), ok: false });
-//   }
-
-//   let { email, password } = req.body;
-
-//   try {
-//     // Find the user by email
-//     const user = await User.findOne({ email });
-
-//     if (!user) {
-//       return res.status(401).json({ message: "User does not exist", ok: false });
-//     }
-
-//     // Compare the provided password with the stored hashed password
-//     const passwordMatch = await bcrypt.compare(password, user.password);
-
-//     if (!passwordMatch) {
-//       return res.status(401).json({ message: "Incorrect email or password", ok: false });
-//     }
-
-//     // Check if the account is verified
-//     if (!user.isVerified) {
-//       const otp = generateRandomUniqueOTP(6);
-//       const hashedOtp = await bcrypt.hash(otp, 10); // Hash the OTP before saving
-//       user.emailVerificationOTP = hashedOtp;
-//       user.emailVerificationOTPExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
-//       await user.save();
-
-//       // Transport the email
-//       const transporter = nodemailer.createTransport({
-//         service: "Gmail",
-//         auth: {
-//           user: process.env.AUTH_EMAIL,
-//           pass: process.env.AUTH_PASS,
-//         },
-//       });
-
-//       const mailOptions = {
-//         from: process.env.AUTH_SENDER,
-//         to: email,
-//         subject: "Email Verification OTP",
-//         text: `Your OTP for email verification is: ${otp}`,
-//       };
-
-//       try {
-//         await transporter.sendMail(mailOptions);
-//         return res.status(401).json({
-//           message: "Account is not verified. A new OTP has been sent to your email.",
-//           ok: false,
-//         });
-//       } catch (emailError) {
-//         console.error("Error sending email:", emailError);
-//         return res.status(500).json({
-//           message: "Error sending verification email. Please try again later.",
-//           ok: false,
-//         });
-//       }
-//     }
-
-//     // Generate JWT access & refresh tokens
-//     const accessToken = jwt.sign(
-//       { userId: user._id, email: user.email },
-//       process.env.SECRET_KEY,
-//       { expiresIn: "15m" } // Short-lived token
-//     );
-
-//     const refreshToken = jwt.sign(
-//       { userId: user._id, email: user.email },
-//       process.env.REFRESH_SECRET,
-//       { expiresIn: "7d" } // Long-lived token
-//     );
-
-//     // Store refresh token in Redis
-//     await storeSession(user._id.toString(), accessToken);
-
-//     // Return response with Bearer token format
-//     return res.status(200).json({
-//       message: "Signin successful",
-//       accessToken: `Bearer ${accessToken}`,  // Bearer token format
-//       refreshToken,
-//       ok: true,
-//       user: {
-//         email: user.email,
-//         fullName: user.fullName,
-//         id: user._id,
-//         isVerified: user.isVerified,
-//         phone: user.phone,
-//         userType: user.userType,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Sign-in error:", error);
-//     return res.status(500).json({ message: "Internal server error", ok: false });
-//   }
-// };
-
 const signIn = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array(), ok: false });
   }
 
-  let { email, password } = req.body;
+  // Expect "identifier" which could be either an email or a payqwickerTag, and a password.
+  let { identifier, password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    let user;
+    // If identifier is an email, search by email; otherwise, assume it's a payqwickerTag.
+    if (validator.isEmail(identifier)) {
+      user = await User.findOne({ email: identifier });
+    } else {
+      // Normalize the tag to ensure it starts with '@'
+      if (!identifier.startsWith('@')) {
+        identifier = '@' + identifier;
+      }
+      user = await User.findOne({ payqwickerTag: identifier });
+    }
 
     if (!user) {
       return res.status(401).json({ message: "User does not exist", ok: false });
@@ -495,7 +320,7 @@ const signIn = async (req, res) => {
 
       const mailOptions = {
         from: process.env.AUTH_SENDER,
-        to: email,
+        to: user.email,
         subject: "Email Verification OTP",
         text: `Your OTP for email verification is: ${otp}`,
       };

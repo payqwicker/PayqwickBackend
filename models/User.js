@@ -76,6 +76,11 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  payqwickerTag: {
+    type: String,
+    required: true, // now required
+    unique: true,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
