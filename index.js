@@ -5,6 +5,8 @@ const connectDb = require("./config/dbConnection");
 const express = require("express");
 const cron = require("node-cron");
 const axios = require("axios");
+
+const persistentRouter = require("./routes/persistentAccountRoute")
 const userRouter = require("./routes/user.route");
 const walletRouter = require("./routes/wallet-route");
 const pagaRouter = require("./routes/paga-route");
@@ -67,6 +69,7 @@ cloudinary.config({
 });
 
 app.use("/api/user", userRouter);
+app.use("/api/registerPersistentPaymentAccount", persistentRouter)
 app.use("/api/wallet", walletRouter);
 app.use("/api/paga", pagaRouter);
 app.use("/api/transactions", transactionsRouter);
@@ -87,7 +90,7 @@ app.use("/api/upload", uploadRouter)
 app.use("/api/notifications", notificationsRouter)
 
 
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 8080;
 
 // Log file setup
 const logFile = path.join(__dirname, "logs", "cronJobLogs.txt");

@@ -5,7 +5,7 @@ const authMiddleware = require('../authMiddleware/authMiddleware');
 const router = express.Router();
 
 router.get('/details',authMiddleware, getWalletDetails);
-router.post('/create', createWallet);
+// router.post('/registerPersistentPaymentAccount', createWallet);
 router.post('/deposit', depositToBank)
 router.post('/account-balance', getAccountBalance)
 router.post("/get-banks", getBanks)

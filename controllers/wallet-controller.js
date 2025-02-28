@@ -296,7 +296,6 @@ const getMerchantServices = async (req, res) => {
   }
 };
 
-
 const createWallet = async (req, res) => {
   try {
     const {
@@ -305,21 +304,21 @@ const createWallet = async (req, res) => {
       firstName,
       lastName,
       accountReference,
-      financialIdentificationNumber,
+      financialIdentificationNumber = '',
       phoneNumber,
       email,
       callbackUrl,
     } = req.body;
 
-    // ✅ Validate required fields
-    if (!referenceNumber || !accountName || !firstName || !lastName || !accountReference || !financialIdentificationNumber) {
+    // Validate required fields
+    if (!referenceNumber || !accountName || !firstName || !lastName || !accountReference) {
       return res.status(400).json({
         message: 'Missing required fields',
-        error: 'referenceNumber, accountName, firstName, lastName, accountReference, and financialIdentificationNumber are required.',
+        error: 'referenceNumber, accountName, firstName, lastName, and accountReference are required.',
       });
     }
 
-    // ✅ Validate at least one contact method
+    // Validate contact information
     if (!phoneNumber && !email) {
       return res.status(400).json({
         message: 'Contact information required',
@@ -327,7 +326,7 @@ const createWallet = async (req, res) => {
       });
     }
 
-    // ✅ Validate accountReference length
+    // Validate accountReference length
     if (accountReference.length < 12 || accountReference.length > 30) {
       return res.status(400).json({
         message: 'Invalid accountReference length',
@@ -335,8 +334,8 @@ const createWallet = async (req, res) => {
       });
     }
 
-    // ✅ Load environment variables
-    const apiUrl = `${process.env.PAGA_BASE_URL}registerPersistentPaymentAccount`;
+    // Load environment variables
+    const apiUrl = `https://collect.paga.com/registerPersistentPaymentAccount`;
     const publicKey = process.env.PAGA_PUBLIC_KEY;
     const secretKey = process.env.PAGA_SECRET_KEY;
     const hmacKey = process.env.PAGA_HMAC_KEY;
@@ -348,22 +347,21 @@ const createWallet = async (req, res) => {
       });
     }
 
-    // ✅ Hash Generation - Using HMAC-SHA512
+    // Hash Generation - Using HMAC-SHA512
     const hashString = `${referenceNumber}|${accountReference}|${financialIdentificationNumber}`;
+    // const hashString = `${referenceNumber}|${accountReference}`;
     const hash = crypto.createHmac('sha512', hmacKey).update(hashString).digest('hex');
 
-    console.log('🔹 Hash String:', hashString);
-    console.log('🔹 Generated Hash:', hash);
 
-    // ✅ API Request Headers
+    // API Request Headers
     const headers = {
       'Content-Type': 'application/json',
-      'principal': publicKey,
-      'credentials': secretKey,
-      'hash': hash,
+      principal: publicKey,
+      credentials: secretKey,
+      hash: hash,
     };
 
-    // ✅ API Request Body
+    // API Request Body
     const data = {
       referenceNumber,
       accountName,
@@ -376,20 +374,14 @@ const createWallet = async (req, res) => {
       callbackUrl,
     };
 
-    console.log('🔹 Sending request to Paga:', apiUrl);
-    console.log('🔹 Headers:', headers);
-    console.log('🔹 Payload:', JSON.stringify(data));
+    // Make API request
+    const response = await axios.post(`https://collect.paga.com/registerPersistentPaymentAccount`, data, { headers });
 
-    // ✅ Make API request
-    const response = await axios.post(apiUrl, data, { headers });
-
-    console.log('🔹 Paga Response:', response.data);
-
-    // ✅ Handle API Response
+    // Handle API Response
     if (response.data && response.data.statusCode === '0' && response.data.statusMessage === 'success') {
       const { accountReference, accountNumber } = response.data;
 
-      // ✅ Save wallet to DB
+      // Save wallet to DB
       const wallet = new Wallet({
         user: req.user._id,
         pagaAccountNumber: accountNumber,
@@ -412,7 +404,7 @@ const createWallet = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('❌ Error creating wallet:', error.response?.data || error.message);
+    console.error('Error creating wallet:', error.response?.data || error.message);
 
     return res.status(500).json({
       message: 'An error occurred while creating the account',
