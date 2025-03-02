@@ -5,7 +5,8 @@ const connectDb = require("./config/dbConnection");
 const express = require("express");
 const cron = require("node-cron");
 const axios = require("axios");
-
+ 
+const sessionRouter = require("./routes/session-route")
 const persistentRouter = require("./routes/persistentAccountRoute")
 const userRouter = require("./routes/user.route");
 const walletRouter = require("./routes/wallet-route");
@@ -68,6 +69,8 @@ cloudinary.config({
   api_secret: "vMS6PmZsUYfI33LBPLkxrFf3hbY",
 });
 
+
+app.use("/api/sessions", sessionRouter)
 app.use("/api/user", userRouter);
 app.use("/api/registerPersistentPaymentAccount", persistentRouter)
 app.use("/api/wallet", walletRouter);

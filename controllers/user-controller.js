@@ -152,126 +152,14 @@ const signUp = async (req, res) => {
   }
 };
 
-const getAllUsers = async (req, res, next) => {
-  const { userId } = req.body;
-  const user = await User.findById(userId);
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found", ok: false });
-  }
-  if (user.userType !== "admin") {
-    return res.status(404).json({ message: "Unauthorized User", ok: false });
-  }
-  try {
-    const users = await User.find();
-    if (!users.length) {
-      return res.status(404).json({ message: "No user found", ok: false });
-    } else {
-      return res.status(200).json({
-        users: users.map((user) => ({
-          id: user._id,
-          email: user.email,
-          fullName: user.fullName,
-          phone: user.phone,
-          createdAt: user.createdAt,
-        })),
-        ok: true,
-      });
-    }
-  } catch (error) {
-    console.log(error);
-  }
-};
-
- const checkUserExists = async (req, res) => {
-  const errors = validationResult(req);
-
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array(), ok: false });
-  }
-  const { email, phone } = req.body;
-
-  // Validate request body
-  if (!email && !password) {
-    return res.status(400).json({
-      success: false,
-      message: "Please provide an email or password to check.",
-    });
-  }
-
-  try {
-    // Query the database for a user with the given email or password
-    const user = await User.findOne({
-      $or: [{ email }, { phone }],
-    });
-
-    if (user) {
-      return res.status(200).json({
-        success: true,
-        message: "User already exists.",
-        data: {
-          email: user.email,
-          phone: user.phone
-        },
-      });
-    }
-
-    // If no user is found
-    return res.json({
-      success: false,
-      message: "No user found with the provided email or password.",
-    });
-  } catch (error) {
-    console.error("Error checking user:", error);
-    return res.status(500).json({
-      success: false,
-      message: "An error occurred while checking the user.",
-    });
-  }
-};
-
-const deleteUserById = async (req, res, next) => {
-  //const { userId, adminId } = req.body;
-  const { userId} = req.body;
-
-  try {
-    const requestingUser = await User.findById(adminId);
-    if (!requestingUser || requestingUser.userType !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized access", ok: false });
-    }
-    
-    // Find the user to be deleted
-    const userToDelete = await User.findById(userId);
-
-    if (!userToDelete) {
-      return res.status(404).json({ message: "User not found", ok: false });
-    }
-
-    await userToDelete.deleteOne();
-
-    return res
-      .status(200)
-      .json({ message: "User deleted successfully", ok: true });
-  } catch (error) {
-    console.error(error);
-    return res
-      .status(500)
-      .json({ message: "Internal Server Error", ok: false });
-  }
-};
-
 const signIn = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ errors: errors.array(), ok: false });
   }
 
-  // Destructure identifier and password from req.body
   let { identifier, password } = req.body;
 
-  // Validate that both identifier and password are provided
   if (!identifier || typeof identifier !== "string") {
     return res.status(400).json({ message: "Identifier is required", ok: false });
   }
@@ -281,11 +169,9 @@ const signIn = async (req, res) => {
 
   try {
     let user;
-    // If identifier is an email, search by email; otherwise, treat it as a username (payqwickerTag)
     if (validator.isEmail(identifier)) {
       user = await User.findOne({ email: identifier });
     } else {
-      // Ensure the username starts with '@' since that's how it's stored
       if (!identifier.startsWith('@')) {
         identifier = '@' + identifier;
       }
@@ -362,7 +248,13 @@ const signIn = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    await storeSession(user._id.toString(), accessToken);
+    // Log before calling storeSession
+    console.log('Calling storeSession with userId:', user._id.toString(), 'accessToken:', accessToken);
+
+    await storeSession(req, user._id.toString(), accessToken, refreshToken, 'deviceId');  // Ensure deviceId is passed correctly
+
+    // Log after storeSession
+    console.log('Successfully stored session for userId:', user._id.toString());
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -390,94 +282,14 @@ const signIn = async (req, res) => {
   }
 };
 
-const persistUser = async (req, res) => {
-  const authHeader = req.header("Authorization");
 
-  if (!authHeader) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
-  // Extract the token from the "Authorization" header
-  const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
-
-  if (!token) {
-    return res.status(401).json({ message: "No token provided", ok: false });
-  }
-
+const logout = async (req, res) => {
   try {
-    // Verify and decode the token
-    const decoded = jwt.verify(token, process.env.SECRET_KEY);
-
-    // Extract the user ID from the decoded token
-    const userId = decoded.userId;
-
-    // Retrieve the user from the database based on the user ID
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found", ok: false });
-    }
-
-    // Additional logic for admin users
-    if (user.userType === "admin") {
-      const totalUsers = await User.countDocuments();
-      const totalTransactions = await Transaction.countDocuments();
-      const totalTransactionsThisMonth = await Transaction.countDocuments({
-        dateUTC: { $gte: new Date().setMonth(new Date().getMonth() - 1) },
-      });
-      const totalWallets = await Wallet.countDocuments();
-      const totalNewUsersThisWeek = await User.countDocuments({
-        createdAt: { $gte: new Date().setDate(new Date().getDate() - 7) },
-      });
-      const totalSuccessfulBillPayTransactions =
-        await Transaction.countDocuments({
-          status: "SUCCESSFUL",
-          transactionType: "BILL_PAY",
-        });
-      const totalSuccessfulAirtimeDataTransactions =
-        await Transaction.countDocuments({
-          status: "SUCCESSFUL",
-          transactionType: "SELL_AIRTIME_PRE_PAID",
-        });
-
-      return res.status(200).json({
-        message: "Signin successful",
-        token,
-        ok: true,
-        user: {
-          email: user.email,
-          fullName: user.fullName,
-          id: user._id,
-          isVerified: user.isVerified,
-          phone: user.phone,
-          userType: user.userType,
-          stats: {
-            totalUsers,
-            totalTransactions,
-            totalTransactionsThisMonth,
-            totalWallets,
-            totalNewUsersThisWeek,
-            totalSuccessfulBillPayTransactions,
-            totalSuccessfulAirtimeDataTransactions,
-          },
-        },
-      });
-    }
-    // Return the user object
-    return res.status(200).json({
-      ok: true,
-      user: {
-        email: user.email,
-        fullName: user.fullName,
-        id: user._id,
-        isVerified: user.isVerified,
-        phone: user.phone,
-        userType: user.userType,
-      },
-    });
+    await deleteSession(req.user.userId);
+    return res.status(200).json({ message: "Logout successful", ok: true });
   } catch (error) {
-    console.error(error);
-    return res.status(401).json({ message: "Token is invalid", ok: false });
+    console.error("Logout error:", error);
+    return res.status(500).json({ message: "Internal server error", ok: false });
   }
 };
 
@@ -599,6 +411,211 @@ const resendOTP = async (req, res) => {
   }
 };
 
+const getAllUsers = async (req, res, next) => {
+  const { userId } = req.body;
+  const user = await User.findById(userId);
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found", ok: false });
+  }
+  if (user.userType !== "admin") {
+    return res.status(404).json({ message: "Unauthorized User", ok: false });
+  }
+  try {
+    const users = await User.find();
+    if (!users.length) {
+      return res.status(404).json({ message: "No user found", ok: false });
+    } else {
+      return res.status(200).json({
+        users: users.map((user) => ({
+          id: user._id,
+          email: user.email,
+          fullName: user.fullName,
+          phone: user.phone,
+          createdAt: user.createdAt,
+        })),
+        ok: true,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+ const checkUserExists = async (req, res) => {
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array(), ok: false });
+  }
+  const { email, phone } = req.body;
+
+  // Validate request body
+  if (!email && !password) {
+    return res.status(400).json({
+      success: false,
+      message: "Please provide an email or password to check.",
+    });
+  }
+
+  try {
+    // Query the database for a user with the given email or password
+    const user = await User.findOne({
+      $or: [{ email }, { phone }],
+    });
+
+    if (user) {
+      return res.status(200).json({
+        success: true,
+        message: "User already exists.",
+        data: {
+          email: user.email,
+          phone: user.phone
+        },
+      });
+    }
+
+    // If no user is found
+    return res.json({
+      success: false,
+      message: "No user found with the provided email or password.",
+    });
+  } catch (error) {
+    console.error("Error checking user:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while checking the user.",
+    });
+  }
+};
+
+const deleteUserById = async (req, res, next) => {
+  //const { userId, adminId } = req.body;
+  const { userId} = req.body;
+
+  try {
+    const requestingUser = await User.findById(adminId);
+    if (!requestingUser || requestingUser.userType !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized access", ok: false });
+    }
+    
+    // Find the user to be deleted
+    const userToDelete = await User.findById(userId);
+
+    if (!userToDelete) {
+      return res.status(404).json({ message: "User not found", ok: false });
+    }
+
+    await userToDelete.deleteOne();
+
+    return res
+      .status(200)
+      .json({ message: "User deleted successfully", ok: true });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ message: "Internal Server Error", ok: false });
+  }
+};
+
+
+
+const persistUser = async (req, res) => {
+  const authHeader = req.header("Authorization");
+
+  if (!authHeader) {
+    return res.status(401).json({ message: "No token provided", ok: false });
+  }
+
+  // Extract the token from the "Authorization" header
+  const token = authHeader.split(" ")[1]; // Assuming the header format is "Bearer <token>"
+
+  if (!token) {
+    return res.status(401).json({ message: "No token provided", ok: false });
+  }
+
+  try {
+    // Verify and decode the token
+    const decoded = jwt.verify(token, process.env.SECRET_KEY);
+
+    // Extract the user ID from the decoded token
+    const userId = decoded.userId;
+
+    // Retrieve the user from the database based on the user ID
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found", ok: false });
+    }
+
+    // Additional logic for admin users
+    if (user.userType === "admin") {
+      const totalUsers = await User.countDocuments();
+      const totalTransactions = await Transaction.countDocuments();
+      const totalTransactionsThisMonth = await Transaction.countDocuments({
+        dateUTC: { $gte: new Date().setMonth(new Date().getMonth() - 1) },
+      });
+      const totalWallets = await Wallet.countDocuments();
+      const totalNewUsersThisWeek = await User.countDocuments({
+        createdAt: { $gte: new Date().setDate(new Date().getDate() - 7) },
+      });
+      const totalSuccessfulBillPayTransactions =
+        await Transaction.countDocuments({
+          status: "SUCCESSFUL",
+          transactionType: "BILL_PAY",
+        });
+      const totalSuccessfulAirtimeDataTransactions =
+        await Transaction.countDocuments({
+          status: "SUCCESSFUL",
+          transactionType: "SELL_AIRTIME_PRE_PAID",
+        });
+
+      return res.status(200).json({
+        message: "Signin successful",
+        token,
+        ok: true,
+        user: {
+          email: user.email,
+          fullName: user.fullName,
+          id: user._id,
+          isVerified: user.isVerified,
+          phone: user.phone,
+          userType: user.userType,
+          stats: {
+            totalUsers,
+            totalTransactions,
+            totalTransactionsThisMonth,
+            totalWallets,
+            totalNewUsersThisWeek,
+            totalSuccessfulBillPayTransactions,
+            totalSuccessfulAirtimeDataTransactions,
+          },
+        },
+      });
+    }
+    // Return the user object
+    return res.status(200).json({
+      ok: true,
+      user: {
+        email: user.email,
+        fullName: user.fullName,
+        id: user._id,
+        isVerified: user.isVerified,
+        phone: user.phone,
+        userType: user.userType,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(401).json({ message: "Token is invalid", ok: false });
+  }
+};
+
+
+
 const forgotPassword = async (req, res) => {
   const errors = validationResult(req);
 
@@ -698,15 +715,125 @@ const changePassword = async (req, res) => {
   }
 };
 
-const logout = async (req, res) => {
+const updatePassword = async (req, res) => {
   try {
-    await deleteSession(req.user.userId);
-    return res.status(200).json({ message: "Logout successful", ok: true });
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.userId; // Extract user ID from authenticated session
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ message: "Both old and new passwords are required.", ok: false });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters.", ok: false });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found.", ok: false });
+    }
+
+    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ message: "Old password is incorrect.", ok: false });
+    }
+
+    // **Update Password Immediately**
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedNewPassword;
+
+    // **Generate a 4-digit OTP for verification**
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const hashedOtp = await bcrypt.hash(otp, 10);
+
+    // **Store OTP & Expiry**
+    user.passwordResetOtp = hashedOtp;
+    user.passwordResetOtpExpires = new Date(Date.now() + 5 * 60 * 1000); // OTP expires in 5 minutes
+
+    await user.save();
+
+    console.log("Generated OTP:", otp); // ✅ Debugging (Remove in production)
+
+    // **Send OTP to user's email**
+    const transporter = nodemailer.createTransport({
+      service: "Gmail",
+      auth: { user: process.env.AUTH_EMAIL, pass: process.env.AUTH_PASS },
+    });
+
+    const mailOptions = {
+      from: process.env.AUTH_SENDER,
+      to: user.email,
+      subject: "Verify Your Password Change",
+      text: `Your OTP for password verification is: ${otp}`,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return res.status(200).json({
+      message: "Password updated successfully. OTP sent for verification.",
+      ok: true,
+    });
   } catch (error) {
-    console.error("Logout error:", error);
-    return res.status(500).json({ message: "Internal server error", ok: false });
+    console.error("Error updating password:", error);
+    return res.status(500).json({ message: "Internal server error.", ok: false });
   }
 };
+
+
+const verifyPasswordUpdate = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    const userId = req.user.userId; // Extract user ID from authenticated session
+
+    if (!otp) {
+      return res.status(400).json({ message: "OTP is required.", ok: false });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found.", ok: false });
+    }
+
+    console.log("Stored OTP:", user.passwordResetOtp); // ✅ Debugging
+
+    if (!user.passwordResetOtp || !user.passwordResetOtpExpires) {
+      return res.status(400).json({ message: "No OTP found or OTP has expired.", ok: false });
+    }
+
+    // Check OTP expiration
+    if (Date.now() > user.passwordResetOtpExpires) {
+      return res.status(400).json({ message: "OTP has expired.", ok: false });
+    }
+
+    // Compare OTP
+    const isOtpValid = await bcrypt.compare(otp, user.passwordResetOtp);
+    if (!isOtpValid) {
+      return res.status(400).json({ message: "Invalid OTP.", ok: false });
+    }
+
+    // Clear OTP after verification
+    user.passwordResetOtp = null;
+    user.passwordResetOtpExpires = null;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Password change verified. Please log in again.",
+      ok: true,
+    });
+  } catch (error) {
+    console.error("Error verifying password update:", error);
+    return res.status(500).json({ message: "Internal server error.", ok: false });
+  }
+};
+
+
+
+
+
+
+
+
+
 
 
 module.exports = {
@@ -720,5 +847,7 @@ module.exports = {
   persistUser,
   deleteUserById,
   resendOTP,
-  logout
+  logout,
+  updatePassword,
+  verifyPasswordUpdate
 };

@@ -296,6 +296,8 @@ const getMerchantServices = async (req, res) => {
   }
 };
 
+
+
 const createWallet = async (req, res) => {
   try {
     const {
@@ -348,7 +350,7 @@ const createWallet = async (req, res) => {
     }
 
     // Hash Generation - Using HMAC-SHA512
-    const hashString = `${referenceNumber}|${accountReference}|${financialIdentificationNumber}`;
+    const hashString = `${referenceNumber}|${accountReference}`;
     // const hashString = `${referenceNumber}|${accountReference}`;
     const hash = crypto.createHmac('sha512', hmacKey).update(hashString).digest('hex');
 
@@ -359,6 +361,9 @@ const createWallet = async (req, res) => {
       principal: publicKey,
       credentials: secretKey,
       hash: hash,
+      Authorization:"Basic NUY0NzZFODYtQkI0Ny00RTkzLTlDRTAtQjYxQjlGNjEzOTMyOndHMz01VnpRY2RteDh0SA=="
+
+
     };
 
     // API Request Body
@@ -512,12 +517,6 @@ const merchantPayment = async (req, res) => {
   }
 };
 
-
-
-
-
-
-
 const getWalletDetails = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -530,10 +529,6 @@ const getWalletDetails = async (req, res) => {
     return res.status(500).json({ success: false, message: "Error fetching wallet", error: error.message });
   }
 };
-
-
-
-
 
 const depositToBank = async (req, res) => {
   try {
@@ -618,11 +613,6 @@ const depositToBank = async (req, res) => {
   }
 };
 
-
-
-/**
- * 5. Check Transaction Status
- */
 const transactionStatus = async (req, res) => {
   try {
     const { referenceNumber } = req.body;
@@ -732,8 +722,6 @@ const transferByTag = async (req, res) => {
     return res.status(500).json({ message: 'Internal server error' });
   }
 };
-
-
 
 const getTransactionsByTag = async (req, res) => {
   try {

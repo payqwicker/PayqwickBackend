@@ -381,6 +381,7 @@ const verifyAddress = async (req, res) => {
 
 
 
+
 module.exports = {
   selectVerificationMethod,
   verifyNIN,
